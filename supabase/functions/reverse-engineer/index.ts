@@ -106,17 +106,59 @@ async function scrapeWithFirecrawl(url: string, apiKey: string): Promise<string>
 
 async function scrapeBasic(url: string): Promise<string> {
   const r = await fetch(url, {
-    headers: { "User-Agent": "Mozilla/5.0 BriefingBot/1.0" },
+    redirect: "follow",
+    headers: {
+      "User-Agent":
+        "Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/124.0 Safari/537.36",
+      "Accept":
+        "text/html,application/xhtml+xml,application/xml;q=0.9,image/avif,image/webp,*/*;q=0.8",
+      "Accept-Language": "pt-BR,pt;q=0.9,en;q=0.8",
+    },
   });
+  if (!r.ok) throw new Error(`HTTP ${r.status} ao buscar a URL`);
   const html = await r.text();
-  // Remove scripts/styles e tags, mantendo texto bruto.
-  const text = html
+
+  const pick = (re: RegExp) => {
+    const m = html.match(re);
+    return m ? m[1].replace(/<[^>]+>/g, " ").replace(/\s+/g, " ").trim() : "";
+  };
+
+  const title = pick(/<title[^>]*>([\s\S]*?)<\/title>/i);
+  const description = pick(/<meta[^>]+name=["']description["'][^>]+content=["']([^"']+)["']/i)
+    || pick(/<meta[^>]+property=["']og:description["'][^>]+content=["']([^"']+)["']/i);
+  const ogTitle = pick(/<meta[^>]+property=["']og:title["'][^>]+content=["']([^"']+)["']/i);
+
+  // Tenta extrair <main> ou <article>; cai para <body>
+  const mainMatch =
+    html.match(/<main[\s\S]*?<\/main>/i) ||
+    html.match(/<article[\s\S]*?<\/article>/i) ||
+    html.match(/<body[\s\S]*?<\/body>/i);
+  const mainHtml = mainMatch ? mainMatch[0] : html;
+
+  // Cabeçalhos (h1-h3) preservados como pistas estruturais
+  const headings = Array.from(mainHtml.matchAll(/<h([1-3])[^>]*>([\s\S]*?)<\/h\1>/gi))
+    .map((m) => `H${m[1]}: ${m[2].replace(/<[^>]+>/g, " ").replace(/\s+/g, " ").trim()}`)
+    .filter((s) => s.length > 4)
+    .slice(0, 60)
+    .join("\n");
+
+  const body = mainHtml
     .replace(/<script[\s\S]*?<\/script>/gi, " ")
     .replace(/<style[\s\S]*?<\/style>/gi, " ")
+    .replace(/<noscript[\s\S]*?<\/noscript>/gi, " ")
+    .replace(/<svg[\s\S]*?<\/svg>/gi, " ")
     .replace(/<[^>]+>/g, " ")
+    .replace(/&nbsp;/g, " ")
     .replace(/\s+/g, " ")
     .trim();
-  return text.slice(0, 20000);
+
+  const composed =
+    `# ${ogTitle || title}\n` +
+    (description ? `> ${description}\n\n` : "\n") +
+    (headings ? `## Estrutura da página\n${headings}\n\n` : "") +
+    `## Conteúdo\n${body}`;
+
+  return composed.slice(0, 20000);
 }
 
 async function researchWithPerplexity(
@@ -296,23 +338,54 @@ Deno.serve(async (req) => {
 
     // 1) Scrape
     let pageContent = "";
+    let scrapeMethod: "firecrawl" | "fetch" | "perplexity-fallback" = "fetch";
     if (byProvider.firecrawl?.api_key) {
       try {
         pageContent = await scrapeWithFirecrawl(url, byProvider.firecrawl.api_key);
+        if (pageContent) scrapeMethod = "firecrawl";
       } catch (e) {
         console.warn("Firecrawl falhou, caindo para fetch direto:", (e as Error).message);
       }
     }
-    if (!pageContent) pageContent = await scrapeBasic(url);
+    if (!pageContent) {
+      try {
+        pageContent = await scrapeBasic(url);
+      } catch (e) {
+        console.warn("Fetch direto falhou:", (e as Error).message);
+      }
+    }
+
+    // Fallback: se o conteúdo está fraco/vazio (site bloqueia bots ou é SPA),
+    // pede para a Perplexity navegar e resumir a página.
+    if ((!pageContent || pageContent.length < 300) && byProvider.perplexity?.api_key) {
+      try {
+        const fb = await researchWithPerplexity(
+          pageContent || `Página inacessível por scraping direto. URL: ${url}`,
+          url,
+          byProvider.perplexity.api_key,
+          byProvider.perplexity.default_model ?? "sonar",
+        );
+        if (fb.content && fb.content.length > 200) {
+          pageContent = `# Conteúdo recuperado via Perplexity (scraping direto bloqueado)\n\n${fb.content}`;
+          scrapeMethod = "perplexity-fallback";
+        }
+      } catch (e) {
+        console.warn("Perplexity fallback falhou:", (e as Error).message);
+      }
+    }
+
     if (!pageContent || pageContent.length < 100) {
-      return new Response(JSON.stringify({ error: "Não foi possível extrair conteúdo da URL." }), {
-        status: 422, headers: { ...corsHeaders, "Content-Type": "application/json" },
-      });
+      return new Response(
+        JSON.stringify({
+          error:
+            "Não foi possível extrair conteúdo da URL. O site pode bloquear acesso automatizado. Conecte Firecrawl ou Perplexity em Integrações para contornar.",
+        }),
+        { status: 422, headers: { ...corsHeaders, "Content-Type": "application/json" } },
+      );
     }
 
     // 2) Pesquisa adicional (opcional) — focada em público-alvo/nicho
 
-    // 2) Pesquisa adicional (opcional) — focada em público-alvo/nicho
     let research = "";
     let citations: string[] = [];
     if (byProvider.perplexity?.api_key) {
@@ -380,8 +453,9 @@ Deno.serve(async (req) => {
     return new Response(
       JSON.stringify({
         data: filled,
-        usedFirecrawl: !!byProvider.firecrawl?.api_key,
-        usedPerplexity: !!byProvider.perplexity?.api_key && !!research,
+        scrapeMethod,
+        usedFirecrawl: scrapeMethod === "firecrawl",
+        usedPerplexity: !!byProvider.perplexity?.api_key && (!!research || scrapeMethod === "perplexity-fallback"),
         citations,
         engine,
         model: engineModel,
