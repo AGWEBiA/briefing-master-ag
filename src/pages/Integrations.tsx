@@ -105,7 +105,27 @@ const Integrations = () => {
     if (error) { toast.error("Falha ao remover"); return; }
     setRows((r) => ({ ...r, [provider]: null }));
     setDrafts((d) => ({ ...d, [provider]: { key: "", model: "" } }));
+    setTestResults((t) => ({ ...t, [provider]: null }));
     toast.success("Integração removida");
+  };
+
+  const testConnection = async (provider: AIProvider) => {
+    setTesting(provider);
+    setTestResults((t) => ({ ...t, [provider]: null }));
+    const { data, error } = await supabase.functions.invoke("test-integration", {
+      body: { provider },
+    });
+    setTesting(null);
+    if (error) {
+      const msg = error.message || "Falha ao testar conexão";
+      setTestResults((t) => ({ ...t, [provider]: { ok: false, message: msg } }));
+      toast.error(msg);
+      return;
+    }
+    const result = data as { ok: boolean; message: string; detail?: string };
+    setTestResults((t) => ({ ...t, [provider]: { ok: result.ok, message: result.message } }));
+    if (result.ok) toast.success(result.message);
+    else toast.error(result.message + (result.detail ? ` — ${result.detail}` : ""));
   };
 
   return (
