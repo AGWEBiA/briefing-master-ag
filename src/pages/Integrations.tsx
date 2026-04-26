@@ -2,7 +2,7 @@ import { useEffect, useState } from "react";
 import { Link } from "react-router-dom";
 import {
   ArrowLeft, CheckCircle2, ExternalLink, Eye, EyeOff, KeyRound,
-  Loader2, Plug, Sparkles, Trash2,
+  Loader2, Plug, Sparkles, Trash2, XCircle, Zap,
 } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
@@ -44,6 +44,10 @@ const Integrations = () => {
     perplexity: false, openai: false, gemini: false, firecrawl: false,
   });
   const [saving, setSaving] = useState<AIProvider | null>(null);
+  const [testing, setTesting] = useState<AIProvider | null>(null);
+  const [testResults, setTestResults] = useState<Record<AIProvider, { ok: boolean; message: string } | null>>({
+    perplexity: null, openai: null, gemini: null, firecrawl: null,
+  });
 
   useEffect(() => {
     if (!user) return;
@@ -101,7 +105,27 @@ const Integrations = () => {
     if (error) { toast.error("Falha ao remover"); return; }
     setRows((r) => ({ ...r, [provider]: null }));
     setDrafts((d) => ({ ...d, [provider]: { key: "", model: "" } }));
+    setTestResults((t) => ({ ...t, [provider]: null }));
     toast.success("Integração removida");
+  };
+
+  const testConnection = async (provider: AIProvider) => {
+    setTesting(provider);
+    setTestResults((t) => ({ ...t, [provider]: null }));
+    const { data, error } = await supabase.functions.invoke("test-integration", {
+      body: { provider },
+    });
+    setTesting(null);
+    if (error) {
+      const msg = error.message || "Falha ao testar conexão";
+      setTestResults((t) => ({ ...t, [provider]: { ok: false, message: msg } }));
+      toast.error(msg);
+      return;
+    }
+    const result = data as { ok: boolean; message: string; detail?: string };
+    setTestResults((t) => ({ ...t, [provider]: { ok: result.ok, message: result.message } }));
+    if (result.ok) toast.success(result.message);
+    else toast.error(result.message + (result.detail ? ` — ${result.detail}` : ""));
   };
 
   return (
@@ -223,7 +247,39 @@ const Integrations = () => {
                       </div>
                     )}
 
-                    <div className="flex justify-end">
+                    {testResults[p.id] && (
+                      <div
+                        className={`flex items-start gap-2 rounded-md border p-3 text-sm ${
+                          testResults[p.id]!.ok
+                            ? "border-success/40 bg-success/10 text-success-foreground"
+                            : "border-destructive/40 bg-destructive/10 text-destructive"
+                        }`}
+                      >
+                        {testResults[p.id]!.ok ? (
+                          <CheckCircle2 className="mt-0.5 h-4 w-4 shrink-0 text-success" />
+                        ) : (
+                          <XCircle className="mt-0.5 h-4 w-4 shrink-0" />
+                        )}
+                        <span>{testResults[p.id]!.message}</span>
+                      </div>
+                    )}
+
+                    <div className="flex flex-wrap justify-end gap-2">
+                      {isConnected && (
+                        <Button
+                          type="button"
+                          variant="outline"
+                          onClick={() => testConnection(p.id)}
+                          disabled={testing === p.id}
+                        >
+                          {testing === p.id ? (
+                            <Loader2 className="mr-2 h-4 w-4 animate-spin" />
+                          ) : (
+                            <Zap className="mr-2 h-4 w-4" />
+                          )}
+                          Testar conexão
+                        </Button>
+                      )}
                       <Button onClick={() => save(p.id)} disabled={saving === p.id}>
                         {saving === p.id && <Loader2 className="mr-2 h-4 w-4 animate-spin" />}
                         {isConnected ? "Atualizar" : "Conectar"}
