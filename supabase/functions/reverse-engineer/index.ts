@@ -607,7 +607,7 @@ Deno.serve(async (req) => {
       engine, apiKey: engineKey, model: engineModel, systemPrompt, userPrompt,
     });
 
-    const finalMethod: ScrapeMethod = scrapeMethod;
+    const finalMethod: string = scrapeMethod;
     return new Response(
       JSON.stringify({
         data: filled,
