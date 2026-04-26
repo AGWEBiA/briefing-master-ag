@@ -260,12 +260,12 @@ async function scrapeBasic(url: string): Promise<ScrapeOutcome> {
 
 // ===== Qualidade do conteúdo raspado =====
 // Devolve um score 0-100 + nível + recomendação de método alternativo.
-const QUALITY_MIN_OK = 60;     // abaixo disso, bloqueia o método e sugere alternativa
-const QUALITY_MIN_USABLE = 40; // abaixo disso, considera inutilizável
+const QUALITY_MIN_OK_BASE = 60;     // abaixo disso, sugere alternativa
+const QUALITY_MIN_USABLE_BASE = 40; // abaixo disso, considera inutilizável
 
 interface QualityReport {
-  ok: boolean;             // score >= QUALITY_MIN_OK
-  usable: boolean;         // score >= QUALITY_MIN_USABLE
+  ok: boolean;             // score >= limiar ajustado
+  usable: boolean;         // score >= limiar utilizável ajustado
   score: number;           // 0-100
   level: "alta" | "média" | "baixa" | "insuficiente";
   chars: number;
@@ -273,9 +273,11 @@ interface QualityReport {
   reason?: string;
   // Trechos representativos para exibir na UI
   snippets: { head: string; middle: string; tail: string };
+  // Limiares efetivamente aplicados (após ajuste por feedback)
+  thresholds: { ok: number; usable: number; adjustment: number };
 }
 
-function assessContentQuality(content: string): QualityReport {
+function assessContentQuality(content: string, thresholdAdjustment = 0): QualityReport {
   const trimmed = content.trim();
   const chars = trimmed.length;
   const wordMatches = trimmed.match(/[A-Za-zÀ-ÿ]{4,}/g) ?? [];
@@ -288,11 +290,16 @@ function assessContentQuality(content: string): QualityReport {
   if (chars < 100) score = Math.min(score, 10);
   score = Math.max(0, Math.min(100, score));
 
+  // Limiares ajustados pelo feedback histórico do usuário (clamp -20..+20)
+  const adj = Math.max(-20, Math.min(20, thresholdAdjustment));
+  const okThr = Math.max(20, Math.min(90, QUALITY_MIN_OK_BASE + adj));
+  const usableThr = Math.max(10, Math.min(okThr - 10, QUALITY_MIN_USABLE_BASE + adj));
+
   let level: QualityReport["level"];
   let reason: string | undefined;
-  if (score >= 75) level = "alta";
-  else if (score >= QUALITY_MIN_OK) level = "média";
-  else if (score >= QUALITY_MIN_USABLE) {
+  if (score >= okThr + 15) level = "alta";
+  else if (score >= okThr) level = "média";
+  else if (score >= usableThr) {
     level = "baixa";
     reason = `Conteúdo abaixo do recomendado (${chars} caracteres, ${words} palavras).`;
   } else {
@@ -313,34 +320,104 @@ function assessContentQuality(content: string): QualityReport {
   };
 
   return {
-    ok: score >= QUALITY_MIN_OK,
-    usable: score >= QUALITY_MIN_USABLE,
+    ok: score >= okThr,
+    usable: score >= usableThr,
     score,
     level,
     chars,
     words,
     reason,
     snippets,
+    thresholds: { ok: okThr, usable: usableThr, adjustment: adj },
   };
 }
 
-// Sugere o melhor método alternativo dadas as integrações disponíveis.
+// Calcula um ajuste de limiar baseado no feedback recente do usuário (mesmo host quando disponível).
+// Lógica: se o usuário marca "bom" conteúdos abaixo do limiar atual → reduzir o limiar.
+// Se marca "ruim" conteúdos acima do limiar atual → aumentar o limiar.
+async function computeThresholdAdjustment(
+  supabase: ReturnType<typeof createClient>,
+  userId: string,
+  host: string,
+): Promise<number> {
+  try {
+    // Últimos 30 feedbacks do usuário, priorizando o mesmo host
+    const { data: hostRows } = await supabase
+      .from("scrape_feedback")
+      .select("score, rating")
+      .eq("user_id", userId)
+      .eq("host", host)
+      .order("created_at", { ascending: false })
+      .limit(20);
+    const { data: globalRows } = await supabase
+      .from("scrape_feedback")
+      .select("score, rating")
+      .eq("user_id", userId)
+      .order("created_at", { ascending: false })
+      .limit(30);
+
+    const rows = [
+      ...((hostRows ?? []) as Array<{ score: number; rating: string }>),
+      ...((globalRows ?? []) as Array<{ score: number; rating: string }>),
+    ];
+    if (rows.length < 3) return 0;
+
+    let pull = 0;
+    let weight = 0;
+    for (const r of rows) {
+      const isGood = r.rating === "good";
+      // Distância do score em relação ao limiar atual base
+      const delta = r.score - QUALITY_MIN_OK_BASE;
+      if (isGood && delta < 0) {
+        // bom abaixo do limiar → puxa limiar pra baixo (maximo -10 por amostra)
+        pull += Math.max(-10, delta / 2);
+        weight += 1;
+      } else if (!isGood && delta > 0) {
+        // ruim acima do limiar → puxa limiar pra cima
+        pull += Math.min(10, delta / 2);
+        weight += 1;
+      }
+    }
+    if (weight === 0) return 0;
+    return Math.round(pull / weight);
+  } catch (e) {
+    console.warn("computeThresholdAdjustment falhou:", (e as Error).message);
+    return 0;
+  }
+}
+
+// Sugere o melhor método alternativo dadas as integrações disponíveis e o tipo de página.
 function recommendNextMethod(opts: {
   triedMethod: string;
   hasFirecrawl: boolean;
   hasPerplexity: boolean;
   blocked: boolean;
+  pageType?: PageType;
 }): "firecrawl" | "perplexity" | "fetch" | null {
-  const { triedMethod, hasFirecrawl, hasPerplexity, blocked } = opts;
-  // Se site bloqueia bots, fetch direto não vai resolver — pular para Firecrawl/Perplexity
-  if (blocked) {
+  const { triedMethod, hasFirecrawl, hasPerplexity, blocked, pageType } = opts;
+
+  // 1) Site bloqueia bots → fetch direto não resolve
+  if (blocked || pageType === "blocked") {
+    if (hasPerplexity) return "perplexity"; // Perplexity é mais robusto a bloqueios
+    if (hasFirecrawl && triedMethod !== "firecrawl") return "firecrawl";
+    return null;
+  }
+
+  // 2) AMP costuma ter bom HTML estático — Firecrawl pode até piorar; pula direto pra Perplexity
+  if (pageType === "amp") {
+    if (hasPerplexity && triedMethod !== "perplexity") return "perplexity";
+    return null;
+  }
+
+  // 3) SPA → Firecrawl é a melhor escolha (renderiza JS)
+  if (pageType === "spa") {
     if (hasFirecrawl && triedMethod !== "firecrawl") return "firecrawl";
     if (hasPerplexity) return "perplexity";
     return null;
   }
-  // Se conteúdo curto vindo de fetch, Firecrawl renderiza JS → melhor alternativa
+
+  // 4) SSR fraco / static / unknown — segue ordem padrão
   if (triedMethod === "fetch" && hasFirecrawl) return "firecrawl";
-  // Se Firecrawl já tentou e falhou, ou não há Firecrawl, vai para Perplexity
   if (hasPerplexity) return "perplexity";
   if (hasFirecrawl && triedMethod !== "firecrawl") return "firecrawl";
   return null;
