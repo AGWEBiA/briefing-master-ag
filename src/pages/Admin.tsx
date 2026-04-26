@@ -110,9 +110,37 @@ const Admin = () => {
         </div>
 
         <Card>
-          <CardHeader className="flex flex-row items-center justify-between">
+          <CardHeader className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
             <CardTitle className="text-base">Gestão de Usuários</CardTitle>
-            <Button variant="outline" size="sm" onClick={loadUsers}>Recarregar</Button>
+            <div className="flex flex-wrap items-center gap-2">
+              <input
+                ref={fileRef}
+                type="file"
+                accept=".xlsx,.xls,.csv"
+                className="hidden"
+                onChange={handleFile}
+              />
+              <Button variant="outline" size="sm" onClick={downloadTemplate}>
+                <Download className="mr-1.5 h-4 w-4" /> Modelo XLSX
+              </Button>
+              <Button
+                variant="outline"
+                size="sm"
+                onClick={() => fileRef.current?.click()}
+                disabled={importing}
+              >
+                {importing ? (
+                  <Loader2 className="mr-1.5 h-4 w-4 animate-spin" />
+                ) : (
+                  <Upload className="mr-1.5 h-4 w-4" />
+                )}
+                Importar XLSX
+              </Button>
+              <Button size="sm" onClick={() => setCreating(true)}>
+                <UserPlus className="mr-1.5 h-4 w-4" /> Novo usuário
+              </Button>
+              <Button variant="ghost" size="sm" onClick={loadUsers}>Recarregar</Button>
+            </div>
           </CardHeader>
           <CardContent>
             <Table>
