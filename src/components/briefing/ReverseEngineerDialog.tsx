@@ -1,5 +1,5 @@
 import { useEffect, useState } from "react";
-import { Link as LinkIcon, Loader2, Sparkles, Wand2 } from "lucide-react";
+import { AlertTriangle, Link as LinkIcon, Loader2, RefreshCw, Sparkles, Wand2 } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import {
   Dialog, DialogContent, DialogDescription, DialogFooter,
@@ -18,6 +18,16 @@ import { supabase } from "@/integrations/supabase/client";
 import { useAuth } from "@/contexts/AuthContext";
 
 type Engine = "lovable" | "openai" | "gemini";
+type ForceMethod = "fetch" | "firecrawl" | "perplexity";
+
+interface ChoicePayload {
+  errorCode: "SITE_BLOCKED" | "WEAK_CONTENT" | "EMPTY_CONTENT" | "INVALID_URL";
+  message: string;
+  preview: string;
+  hasPerplexity: boolean;
+  hasFirecrawl: boolean;
+  scrapeStatus?: number;
+}
 
 interface Props {
   onApply: (data: Record<string, string>) => void;
@@ -30,12 +40,14 @@ export const ReverseEngineerDialog = ({ onApply, trigger }: Props) => {
   const [url, setUrl] = useState("");
   const [engine, setEngine] = useState<Engine>("lovable");
   const [running, setRunning] = useState(false);
+  const [choice, setChoice] = useState<ChoicePayload | null>(null);
   const [available, setAvailable] = useState<{ openai: boolean; gemini: boolean; perplexity: boolean; firecrawl: boolean }>({
     openai: false, gemini: false, perplexity: false, firecrawl: false,
   });
 
   useEffect(() => {
     if (!open || !user) return;
+    setChoice(null);
     (async () => {
       const { data } = await supabase
         .from("ai_integrations")
@@ -47,7 +59,7 @@ export const ReverseEngineerDialog = ({ onApply, trigger }: Props) => {
     })();
   }, [open, user]);
 
-  const run = async () => {
+  const run = async (forceMethod?: ForceMethod) => {
     if (!/^https?:\/\//i.test(url)) {
       toast.error("Informe uma URL válida (http/https).");
       return;
@@ -62,8 +74,9 @@ export const ReverseEngineerDialog = ({ onApply, trigger }: Props) => {
     }
 
     setRunning(true);
+    setChoice(null);
     const { data, error } = await supabase.functions.invoke("reverse-engineer", {
-      body: { url, engine },
+      body: { url, engine, mode: forceMethod ? "run" : "auto", forceMethod },
     });
     setRunning(false);
 
@@ -72,8 +85,20 @@ export const ReverseEngineerDialog = ({ onApply, trigger }: Props) => {
       toast.error(msg);
       return;
     }
+
+    // Conteúdo fraco / site bloqueado → mostra opções
+    if (data?.needsChoice) {
+      setChoice(data as ChoicePayload);
+      return;
+    }
+
     if (data?.error) {
-      toast.error(data.error);
+      const code = data.errorCode;
+      if (code === "SITE_BLOCKED") {
+        toast.error("Site bloqueou a leitura automatizada. Tente com Perplexity ou outro link.");
+      } else {
+        toast.error(data.error);
+      }
       return;
     }
     if (!data?.data || Object.keys(data.data).length === 0) {
@@ -88,6 +113,7 @@ export const ReverseEngineerDialog = ({ onApply, trigger }: Props) => {
     setOpen(false);
     setUrl("");
   };
+
 
   return (
     <Dialog open={open} onOpenChange={setOpen}>
