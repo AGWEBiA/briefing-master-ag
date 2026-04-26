@@ -163,16 +163,47 @@ const Admin = () => {
     ?? users.find((p) => p.id === uid)?.email
     ?? uid.slice(0, 8);
 
-  const filteredUsers = users.filter((u) => {
-    if (userRoleFilter === "admin" && !u.is_admin) return false;
-    if (userRoleFilter === "user" && u.is_admin) return false;
-    const q = userSearch.trim().toLowerCase();
-    if (!q) return true;
-    return (
-      (u.email ?? "").toLowerCase().includes(q) ||
-      (u.display_name ?? "").toLowerCase().includes(q)
-    );
+  const filteredUsers = users
+    .filter((u) => {
+      if (userRoleFilter === "admin" && !u.is_admin) return false;
+      if (userRoleFilter === "user" && u.is_admin) return false;
+      const q = userSearch.trim().toLowerCase();
+      if (!q) return true;
+      return (
+        (u.email ?? "").toLowerCase().includes(q) ||
+        (u.display_name ?? "").toLowerCase().includes(q)
+      );
+    })
+    .slice()
+    .sort((a, b) => {
+      const mult = userSort.dir === "asc" ? 1 : -1;
+      if (userSort.key === "name") {
+        const an = (a.display_name ?? a.email ?? "").toLowerCase();
+        const bn = (b.display_name ?? b.email ?? "").toLowerCase();
+        return an.localeCompare(bn, "pt-BR") * mult;
+      }
+      const at = a.last_sign_in_at ? new Date(a.last_sign_in_at).getTime() : 0;
+      const bt = b.last_sign_in_at ? new Date(b.last_sign_in_at).getTime() : 0;
+      return (at - bt) * mult;
+    });
+
+  const sortedBriefings = briefings.slice().sort((a, b) => {
+    const mult = briefingSort.dir === "asc" ? 1 : -1;
+    if (briefingSort.key === "title") {
+      return (a.title ?? "").toLowerCase().localeCompare((b.title ?? "").toLowerCase(), "pt-BR") * mult;
+    }
+    return (new Date(a.updated_at).getTime() - new Date(b.updated_at).getTime()) * mult;
   });
+
+  const toggleUserSort = (key: "name" | "last_sign_in") =>
+    setUserSort((s) => s.key === key ? { key, dir: s.dir === "asc" ? "desc" : "asc" } : { key, dir: "asc" });
+  const toggleBriefingSort = (key: "title" | "updated") =>
+    setBriefingSort((s) => s.key === key ? { key, dir: s.dir === "asc" ? "desc" : "asc" } : { key, dir: "asc" });
+
+  const SortIcon = ({ active, dir }: { active: boolean; dir: "asc" | "desc" }) =>
+    !active ? <ArrowUpDown className="h-3.5 w-3.5 opacity-40" />
+      : dir === "asc" ? <ArrowUp className="h-3.5 w-3.5" />
+      : <ArrowDown className="h-3.5 w-3.5" />;
 
   return (
     <div className="min-h-screen bg-background">
