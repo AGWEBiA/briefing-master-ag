@@ -207,16 +207,58 @@ export const ReverseEngineerDialog = ({ onApply, trigger }: Props) => {
                   </p>
                   <p className="text-xs text-muted-foreground mt-1">{choice.message}</p>
                 </div>
-                {choice.preview && (
-                  <details className="text-xs">
+                {/* Indicador de qualidade */}
+                <div className="rounded-md border bg-background/60 p-2.5 space-y-1.5">
+                  <div className="flex items-center justify-between text-xs">
+                    <span className="font-medium">Qualidade do conteúdo raspado</span>
+                    <span className="font-mono">{choice.preview.score}/100 · {choice.preview.level}</span>
+                  </div>
+                  <Progress
+                    value={choice.preview.score}
+                    className="h-1.5"
+                    indicatorClassName={
+                      choice.preview.level === "alta" ? "bg-success" :
+                      choice.preview.level === "média" ? "bg-primary" :
+                      choice.preview.level === "baixa" ? "bg-warning" : "bg-destructive"
+                    }
+                  />
+                  <div className="flex flex-wrap gap-x-3 gap-y-0.5 text-[10px] text-muted-foreground">
+                    <span>{choice.preview.length.toLocaleString("pt-BR")} caracteres</span>
+                    <span>·</span>
+                    <span>{choice.preview.words.toLocaleString("pt-BR")} palavras</span>
+                    {choice.scrapeMethod && <><span>·</span><span>via {choice.scrapeMethod}</span></>}
+                  </div>
+                </div>
+
+                {/* Prévia em trechos */}
+                {(choice.preview.head || choice.preview.middle || choice.preview.tail) && (
+                  <details className="text-xs" open={choice.preview.score < 30}>
                     <summary className="cursor-pointer text-muted-foreground hover:text-foreground">
-                      Ver prévia do conteúdo extraído
+                      Ver trechos do conteúdo extraído
                     </summary>
-                    <pre className="mt-2 max-h-32 overflow-auto rounded bg-muted/50 p-2 text-[11px] whitespace-pre-wrap">
-                      {choice.preview || "(vazio)"}
-                    </pre>
+                    <div className="mt-2 space-y-2 text-[11px]">
+                      {choice.preview.head && (
+                        <div>
+                          <div className="text-[10px] uppercase tracking-wide text-muted-foreground mb-0.5">Início</div>
+                          <p className="rounded bg-muted/50 p-2 whitespace-pre-wrap">{choice.preview.head}</p>
+                        </div>
+                      )}
+                      {choice.preview.middle && (
+                        <div>
+                          <div className="text-[10px] uppercase tracking-wide text-muted-foreground mb-0.5">Meio</div>
+                          <p className="rounded bg-muted/50 p-2 whitespace-pre-wrap">{choice.preview.middle}</p>
+                        </div>
+                      )}
+                      {choice.preview.tail && (
+                        <div>
+                          <div className="text-[10px] uppercase tracking-wide text-muted-foreground mb-0.5">Fim</div>
+                          <p className="rounded bg-muted/50 p-2 whitespace-pre-wrap">{choice.preview.tail}</p>
+                        </div>
+                      )}
+                    </div>
                   </details>
                 )}
+
                 <div className="space-y-2">
                   <p className="text-xs font-medium text-foreground">
                     Escolha como prosseguir:
