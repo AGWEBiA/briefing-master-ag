@@ -120,10 +120,26 @@ async function scrapeBasic(url: string): Promise<string> {
 }
 
 async function researchWithPerplexity(
-  query: string,
+  pageContent: string,
+  url: string,
   apiKey: string,
   model = "sonar",
-): Promise<string> {
+): Promise<{ content: string; citations: string[] }> {
+  // Etapa 1: extrair nicho/subnicho/público a partir da página
+  const trimmed = pageContent.slice(0, 6000);
+  const userQuery =
+    `Com base no conteúdo abaixo (extraído de ${url}), faça uma pesquisa aprofundada SOMENTE em fontes públicas verificáveis sobre o PÚBLICO-ALVO do produto.\n\n` +
+    `CONTEÚDO DA PÁGINA:\n"""\n${trimmed}\n"""\n\n` +
+    `INSTRUÇÕES OBRIGATÓRIAS:\n` +
+    `1. Identifique o NICHO e SUBNICHO do produto.\n` +
+    `2. Descreva o AVATAR (perfil demográfico/psicográfico) com base em fontes reais do nicho.\n` +
+    `3. Liste DORES, DESEJOS e OBJEÇÕES típicas desse público no subnicho identificado.\n` +
+    `4. Levante POSICIONAMENTO e DIFERENCIAIS de concorrentes diretos no mesmo subnicho.\n` +
+    `5. Inclua CANAIS ONLINE onde esse público se concentra.\n` +
+    `6. NÃO invente números, nomes próprios, depoimentos ou estatísticas. Se não houver fonte clara, escreva "não verificado".\n` +
+    `7. Cite as fontes ao final de cada bloco entre colchetes [URL].\n` +
+    `Formato: tópicos curtos e objetivos em português do Brasil.`;
+
   const r = await fetch("https://api.perplexity.ai/chat/completions", {
     method: "POST",
     headers: {
@@ -136,16 +152,21 @@ async function researchWithPerplexity(
         {
           role: "system",
           content:
-            "Você é um pesquisador de mercado. Resuma o público, dores, desejos, posicionamento e diferenciais que aparecem em fontes públicas.",
+            "Você é um pesquisador de mercado sênior especializado em infoprodutos. Trabalha SOMENTE com informações verificáveis em fontes públicas. Nunca inventa dados, números, nomes ou estatísticas. Quando uma informação não puder ser confirmada, escreve explicitamente 'não verificado'. Sempre responde em português do Brasil.",
         },
-        { role: "user", content: query },
+        { role: "user", content: userQuery },
       ],
-      max_tokens: 800,
+      temperature: 0.1,
+      max_tokens: 1500,
+      return_citations: true,
     }),
   });
   const data = await r.json();
   if (!r.ok) throw new Error(`Perplexity: ${data?.error?.message ?? r.statusText}`);
-  return data?.choices?.[0]?.message?.content ?? "";
+  return {
+    content: data?.choices?.[0]?.message?.content ?? "",
+    citations: data?.citations ?? [],
+  };
 }
 
 // Chama LLM com tool calling — gateway depende do engine
