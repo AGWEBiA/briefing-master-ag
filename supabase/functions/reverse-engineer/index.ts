@@ -183,14 +183,92 @@ async function scrapeBasic(url: string): Promise<ScrapeOutcome> {
   return { content: composed.slice(0, 20000), status: r.status, blocked: false };
 }
 
-// Heurística de qualidade do conteúdo raspado.
-function assessContentQuality(content: string): { ok: boolean; reason?: string; chars: number } {
-  const chars = content.trim().length;
-  if (chars < 300) return { ok: false, chars, reason: "Conteúdo muito curto (provável SPA ou bloqueio)." };
-  // Conteúdo sem nenhuma palavra com mais de 4 letras é suspeito
-  const words = content.match(/[A-Za-zÀ-ÿ]{4,}/g) ?? [];
-  if (words.length < 40) return { ok: false, chars, reason: "Conteúdo sem texto significativo." };
-  return { ok: true, chars };
+// ===== Qualidade do conteúdo raspado =====
+// Devolve um score 0-100 + nível + recomendação de método alternativo.
+const QUALITY_MIN_OK = 60;     // abaixo disso, bloqueia o método e sugere alternativa
+const QUALITY_MIN_USABLE = 40; // abaixo disso, considera inutilizável
+
+interface QualityReport {
+  ok: boolean;             // score >= QUALITY_MIN_OK
+  usable: boolean;         // score >= QUALITY_MIN_USABLE
+  score: number;           // 0-100
+  level: "alta" | "média" | "baixa" | "insuficiente";
+  chars: number;
+  words: number;
+  reason?: string;
+  // Trechos representativos para exibir na UI
+  snippets: { head: string; middle: string; tail: string };
+}
+
+function assessContentQuality(content: string): QualityReport {
+  const trimmed = content.trim();
+  const chars = trimmed.length;
+  const wordMatches = trimmed.match(/[A-Za-zÀ-ÿ]{4,}/g) ?? [];
+  const words = wordMatches.length;
+
+  // Score por caracteres (até 60 pts) + por palavras significativas (até 40 pts)
+  const charScore = Math.min(60, Math.round((chars / 2000) * 60));
+  const wordScore = Math.min(40, Math.round((words / 250) * 40));
+  let score = charScore + wordScore;
+  if (chars < 100) score = Math.min(score, 10);
+  score = Math.max(0, Math.min(100, score));
+
+  let level: QualityReport["level"];
+  let reason: string | undefined;
+  if (score >= 75) level = "alta";
+  else if (score >= QUALITY_MIN_OK) level = "média";
+  else if (score >= QUALITY_MIN_USABLE) {
+    level = "baixa";
+    reason = `Conteúdo abaixo do recomendado (${chars} caracteres, ${words} palavras).`;
+  } else {
+    level = "insuficiente";
+    reason =
+      chars < 300
+        ? "Conteúdo muito curto (provável SPA ou bloqueio)."
+        : "Conteúdo sem texto significativo.";
+  }
+
+  // Trechos: começo, meio e fim, sem ultrapassar limites
+  const snip = (s: string) => s.replace(/\s+/g, " ").trim().slice(0, 280);
+  const mid = chars > 600 ? Math.floor(chars / 2) - 140 : 0;
+  const snippets = {
+    head: snip(trimmed.slice(0, 280)),
+    middle: chars > 600 ? snip(trimmed.slice(mid, mid + 280)) : "",
+    tail: chars > 1200 ? snip(trimmed.slice(-280)) : "",
+  };
+
+  return {
+    ok: score >= QUALITY_MIN_OK,
+    usable: score >= QUALITY_MIN_USABLE,
+    score,
+    level,
+    chars,
+    words,
+    reason,
+    snippets,
+  };
+}
+
+// Sugere o melhor método alternativo dadas as integrações disponíveis.
+function recommendNextMethod(opts: {
+  triedMethod: string;
+  hasFirecrawl: boolean;
+  hasPerplexity: boolean;
+  blocked: boolean;
+}): "firecrawl" | "perplexity" | "fetch" | null {
+  const { triedMethod, hasFirecrawl, hasPerplexity, blocked } = opts;
+  // Se site bloqueia bots, fetch direto não vai resolver — pular para Firecrawl/Perplexity
+  if (blocked) {
+    if (hasFirecrawl && triedMethod !== "firecrawl") return "firecrawl";
+    if (hasPerplexity) return "perplexity";
+    return null;
+  }
+  // Se conteúdo curto vindo de fetch, Firecrawl renderiza JS → melhor alternativa
+  if (triedMethod === "fetch" && hasFirecrawl) return "firecrawl";
+  // Se Firecrawl já tentou e falhou, ou não há Firecrawl, vai para Perplexity
+  if (hasPerplexity) return "perplexity";
+  if (hasFirecrawl && triedMethod !== "firecrawl") return "firecrawl";
+  return null;
 }
 
 
