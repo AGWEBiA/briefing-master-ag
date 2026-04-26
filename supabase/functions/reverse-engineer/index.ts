@@ -200,20 +200,27 @@ async function researchWithPerplexity(
   apiKey: string,
   model = "sonar",
 ): Promise<{ content: string; citations: string[] }> {
-  // Etapa 1: extrair nicho/subnicho/público a partir da página
   const trimmed = pageContent.slice(0, 6000);
   const userQuery =
-    `Com base no conteúdo abaixo (extraído de ${url}), faça uma pesquisa aprofundada SOMENTE em fontes públicas verificáveis sobre o PÚBLICO-ALVO do produto.\n\n` +
-    `CONTEÚDO DA PÁGINA:\n"""\n${trimmed}\n"""\n\n` +
-    `INSTRUÇÕES OBRIGATÓRIAS:\n` +
-    `1. Identifique o NICHO e SUBNICHO do produto.\n` +
-    `2. Descreva o AVATAR (perfil demográfico/psicográfico) com base em fontes reais do nicho.\n` +
-    `3. Liste DORES, DESEJOS e OBJEÇÕES típicas desse público no subnicho identificado.\n` +
-    `4. Levante POSICIONAMENTO e DIFERENCIAIS de concorrentes diretos no mesmo subnicho.\n` +
-    `5. Inclua CANAIS ONLINE onde esse público se concentra.\n` +
-    `6. NÃO invente números, nomes próprios, depoimentos ou estatísticas. Se não houver fonte clara, escreva "não verificado".\n` +
-    `7. Cite as fontes ao final de cada bloco entre colchetes [URL].\n` +
-    `Formato: tópicos curtos e objetivos em português do Brasil.`;
+    `Tenho uma página de produto/infoproduto em ${url}. Use o conteúdo abaixo como ponto de partida e pesquise APENAS em fontes públicas verificáveis para mapear o PÚBLICO-ALVO, NICHO e SUBNICHO.\n\n` +
+    `=== CONTEÚDO DA PÁGINA ===\n"""\n${trimmed}\n"""\n\n` +
+    `=== O QUE EU PRECISO (responda em blocos numerados, em português do Brasil) ===\n` +
+    `1. NICHO e SUBNICHO — categoria de mercado e recorte específico do produto.\n` +
+    `2. PÚBLICO-ALVO PRIMÁRIO — perfil demográfico (faixa etária, gênero predominante, renda, escolaridade) e psicográfico (estilo de vida, valores, momento de carreira/vida). Cite a fonte de cada afirmação.\n` +
+    `3. DORES — 3 a 5 dores recorrentes desse público nesse subnicho, com fonte para cada uma.\n` +
+    `4. DESEJOS — 3 a 5 desejos/aspirações típicas, com fonte.\n` +
+    `5. OBJEÇÕES — 3 a 5 objeções comuns à compra de soluções no subnicho, com fonte.\n` +
+    `6. NÍVEL DE CONSCIÊNCIA dominante (escala de Eugene Schwartz: inconsciente → consciente do problema → da solução → do produto → mais consciente).\n` +
+    `7. CANAIS ONLINE — onde esse público se concentra (redes sociais, comunidades, podcasts, fóruns), com exemplos verificáveis.\n` +
+    `8. CONCORRENTES diretos no mesmo subnicho — 2 a 5 nomes verificáveis, com posicionamento e diferenciais.\n` +
+    `9. MAPA DA EMPATIA do avatar — preencha os 6 quadrantes (PENSA E SENTE / VÊ / OUVE / FALA E FAZ / DORES / GANHOS) baseando-se EXCLUSIVAMENTE no que foi pesquisado.\n\n` +
+    `=== REGRAS RÍGIDAS ANTI-ALUCINAÇÃO ===\n` +
+    `- NUNCA invente nomes próprios, depoimentos, números, percentuais, datas, preços ou estatísticas.\n` +
+    `- Se uma informação não estiver claramente em uma fonte pública, escreva literalmente "não verificado" naquele item.\n` +
+    `- Cite a fonte ao final de cada afirmação relevante usando [URL] entre colchetes.\n` +
+    `- NÃO repita literalmente o texto da página; use-o apenas como contexto para a pesquisa externa.\n` +
+    `- Se a página estiver vazia, em outro idioma ou inacessível, identifique o nicho a partir da URL e diga claramente quais blocos não puderam ser respondidos.\n` +
+    `- Tom: objetivo, em tópicos curtos. Sem floreio.`;
 
   const r = await fetch("https://api.perplexity.ai/chat/completions", {
     method: "POST",
@@ -227,12 +234,12 @@ async function researchWithPerplexity(
         {
           role: "system",
           content:
-            "Você é um pesquisador de mercado sênior especializado em infoprodutos. Trabalha SOMENTE com informações verificáveis em fontes públicas. Nunca inventa dados, números, nomes ou estatísticas. Quando uma informação não puder ser confirmada, escreve explicitamente 'não verificado'. Sempre responde em português do Brasil.",
+            "Você é um pesquisador de mercado sênior especializado em infoprodutos no Brasil. Trabalha EXCLUSIVAMENTE com informações verificáveis em fontes públicas (sites oficiais, relatórios de mercado, estudos públicos, conteúdos de imprensa, comunidades públicas). NUNCA inventa dados, números, nomes próprios, depoimentos ou estatísticas. Quando algo não pode ser confirmado, escreve literalmente 'não verificado'. Cita as fontes entre colchetes [URL]. Sempre responde em português do Brasil, em tópicos objetivos.",
         },
         { role: "user", content: userQuery },
       ],
       temperature: 0.1,
-      max_tokens: 1500,
+      max_tokens: 1800,
       return_citations: true,
     }),
   });
@@ -243,6 +250,7 @@ async function researchWithPerplexity(
     citations: data?.citations ?? [],
   };
 }
+
 
 // Chama LLM com tool calling — gateway depende do engine
 async function callLLMWithTool(opts: {
