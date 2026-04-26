@@ -18,6 +18,7 @@ import { AppHeader } from "@/components/AppHeader";
 import { BriefingSidebar } from "@/components/briefing/BriefingSidebar";
 import { FieldRenderer } from "@/components/briefing/FieldRenderer";
 import { StrategyPicker } from "@/components/briefing/StrategyPicker";
+import { ReverseEngineerDialog } from "@/components/briefing/ReverseEngineerDialog";
 import {
   FIXED_SECTIONS, getStrategy, type Section, type StrategyId,
 } from "@/lib/briefingSchema";
