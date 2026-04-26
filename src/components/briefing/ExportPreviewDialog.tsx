@@ -99,6 +99,47 @@ export function ExportPreviewDialog({
   // Renderiza markdown como HTML simples (cabeçalhos, listas, tabelas, blockquote)
   const mdAsHtml = useMemo(() => renderMarkdownLite(mdContent), [mdContent]);
 
+  // Injeta CSS adicional no HTML do Word para a pré-visualização (modo A4 vs responsivo)
+  const docPreviewSrc = useMemo(() => {
+    if (!docHtml) return "";
+    const extra = docLayout === "a4"
+      ? `
+        <style>
+          html, body { background: #f3f4f6; }
+          body { margin: 0; padding: 0; }
+          /* Cada elemento marcado como page-break vira "fim de página" visual */
+          .cover, .toc { box-shadow: 0 2px 8px rgba(0,0,0,0.08); margin: 0 auto 20px; background: #fff; padding: 40pt 36pt; max-width: 21cm; min-height: 29.7cm; box-sizing: border-box; position: relative; }
+          .cover::after, .toc::after {
+            content: "— quebra de página —"; position: absolute; bottom: -18px; left: 0; right: 0;
+            text-align: center; font-size: 10px; color: #9ca3af; letter-spacing: 2px; text-transform: uppercase;
+          }
+          .block {
+            background: #fff; box-shadow: 0 2px 8px rgba(0,0,0,0.08);
+            margin: 0 auto 20px; padding: 36pt 36pt 40pt; max-width: 21cm;
+            box-sizing: border-box; page-break-inside: avoid;
+          }
+        </style>
+      `
+      : `
+        <style>
+          html, body { background: #fff; }
+          body { margin: 0; padding: 16px 20px; }
+          .cover, .toc, .block { max-width: 100%; padding: 16px 0; }
+          .cover { page-break-after: auto !important; border-bottom: 2px dashed #e5e7eb; padding-bottom: 28px; margin-bottom: 28px; }
+          .toc { border-bottom: 1px dashed #e5e7eb; padding-bottom: 16px; margin-bottom: 16px; }
+        </style>
+      `;
+    return docHtml.replace("</head>", `${extra}</head>`);
+  }, [docHtml, docLayout]);
+
+  // Auto-ajusta a altura do iframe ao conteúdo
+  const handleIframeLoad = () => {
+    const iframe = docIframeRef.current;
+    if (!iframe || !iframe.contentDocument) return;
+    const h = iframe.contentDocument.documentElement.scrollHeight;
+    setDocHeight(Math.max(800, h + 40));
+  };
+
   return (
     <Dialog open={open} onOpenChange={onOpenChange}>
       <DialogContent className="max-w-6xl p-0 gap-0 h-[90vh] flex flex-col">
