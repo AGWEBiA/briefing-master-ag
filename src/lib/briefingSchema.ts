@@ -313,6 +313,40 @@ export const STRATEGIES: Strategy[] = [
       ]}]},
     ],
   },
+  {
+    id: "vd", name: "Venda Direta", emoji: "⚡",
+    description: "Oferta direta sem evento, CPLs ou aquecimento longo. Tráfego → Página de Vendas (VSL/Carta) → Checkout.",
+    tags: ["Direct Response", "VSL", "Página de vendas", "Tráfego pago"],
+    sections: [
+      { id: "vd_oferta", title: "Oferta e Promessa", icon: Zap, groups: [{ fields: [
+        { id: "vd_grandePromessa", label: "Grande Promessa da Oferta", type: "textarea", rows: 3, required: true, hint: "Promessa central + prazo + mecanismo único. Ex.: 'Da estagnação a R$10k/mês em 90 dias com o Método X'." },
+        { id: "vd_mecanismoUnico", label: "Mecanismo Único / Diferencial", type: "textarea", rows: 3, hint: "Por que ESSA oferta funciona quando outras falharam?" },
+        { id: "vd_urgenciaEscassez", label: "Urgência e Escassez na Oferta", type: "textarea", rows: 2, hint: "Ex.: vagas limitadas, bônus por tempo, condição especial até X..." },
+        { id: "vd_garantiaForte", label: "Garantia (Risco Reverso)", type: "text", placeholder: "Ex.: 7 dias incondicional, 30 dias com resultado..." },
+      ]}]},
+      { id: "vd_pagina", title: "Página de Vendas", icon: ShoppingCart, groups: [{ fields: [
+        { id: "vd_tipoPagina", label: "Formato da Página de Vendas", type: "select", required: true, options: ["VSL (Vídeo de Vendas)", "Carta de Vendas (texto longo)", "Híbrida (vídeo + carta)", "Quiz funnel", "Landing curta + checkout"] },
+        { id: "vd_headlinePrincipal", label: "Headline Principal", type: "text", required: true, placeholder: "A frase de impacto no topo da página" },
+        { id: "vd_subHeadline", label: "Sub-headline / Pré-headline", type: "text", placeholder: "Reforço imediato à promessa" },
+        { id: "vd_estruturaCopy", label: "Estrutura da Copy / Roteiro VSL", type: "textarea", rows: 5, hint: "Bloco a bloco: hook → história → problema → solução → prova → oferta → urgência → CTA." },
+        { id: "vd_ctaPrincipal", label: "CTA Principal (Botão de Compra)", type: "text", placeholder: "Ex.: 'Quero garantir minha vaga agora'" },
+      ]}]},
+      { id: "vd_trafego", title: "Tráfego e Funil", icon: Target, groups: [{ fields: [
+        { id: "vd_fonteTrafego", label: "Fonte de Tráfego Principal", type: "text", required: true, placeholder: "Meta Ads, Google Ads, YouTube Ads, TikTok..." },
+        { id: "vd_orcamentoDiario", label: "Orçamento Diário Inicial", type: "text", placeholder: "R$ 200,00/dia" },
+        { id: "vd_metaCPA", label: "Meta de CPA (Custo por Aquisição)", type: "text", placeholder: "Ex.: R$ 250,00" },
+        { id: "vd_metaROAS", label: "Meta de ROAS", type: "text", placeholder: "Ex.: 2.5x, 3x..." },
+        { id: "vd_anguloCriativo", label: "Ângulos de Criativos para Anúncios", type: "textarea", rows: 4, hint: "Quais ângulos/dores serão testados nos criativos? Liste pelo menos 3." },
+      ]}]},
+      { id: "vd_checkout", title: "Checkout, Order Bump e Pós-venda", icon: ClipboardList, groups: [{ fields: [
+        { id: "vd_orderBump", label: "Order Bump no Checkout", type: "textarea", rows: 2, hint: "Produto complementar barato para aumentar ticket médio." },
+        { id: "vd_upsell1", label: "Upsell #1 (após compra principal)", type: "textarea", rows: 2 },
+        { id: "vd_downsell", label: "Downsell (se recusar o upsell)", type: "textarea", rows: 2 },
+        { id: "vd_recuperacaoCarrinho", label: "Estratégia de Recuperação de Carrinho Abandonado", type: "textarea", rows: 3, hint: "E-mails, WhatsApp, retargeting..." },
+        { id: "vd_pagamentoBoleto", label: "Régua de Recuperação de Boleto/PIX", type: "textarea", rows: 2 },
+      ]}]},
+    ],
+  },
 ];
 
 export const getStrategy = (id?: string | null): Strategy | undefined =>
