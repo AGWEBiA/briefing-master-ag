@@ -47,6 +47,23 @@ Deno.serve(async (req) => {
     const body = await req.json().catch(() => ({}));
     const action = String(body.action ?? "");
 
+    // Carrega lista completa de usuários (com paginação) — usado para detectar emails duplicados
+    const loadAllUsers = async () => {
+      const all: Array<{ id: string; email: string | null }> = [];
+      let page = 1;
+      const perPage = 200;
+      while (page <= 25) {
+        const { data, error } = await admin.auth.admin.listUsers({ page, perPage });
+        if (error) break;
+        for (const u of data.users) all.push({ id: u.id, email: u.email ?? null });
+        if (data.users.length < perPage) break;
+        page += 1;
+      }
+      return all;
+    };
+    const buildEmailSet = (users: Array<{ email: string | null }>) =>
+      new Set(users.map((u) => (u.email ?? "").toLowerCase()).filter(Boolean));
+
     if (action === "list") {
       const { data: list, error: lerr } = await admin.auth.admin.listUsers({
         page: 1,
@@ -116,6 +133,28 @@ Deno.serve(async (req) => {
       return json({ ok: true });
     }
 
+    // Toggle rápido do flag admin (usado pela lista) — não toca em email/senha/perfil
+    if (action === "set_admin") {
+      const id = String(body.id ?? "");
+      const is_admin = !!body.is_admin;
+      if (!id) return json({ error: "id required" }, 400);
+      if (!is_admin && id === callerId) {
+        return json({ error: "Você não pode remover seu próprio admin." }, 400);
+      }
+      if (is_admin) {
+        const { error: ue } = await admin.from("user_roles").upsert(
+          { user_id: id, role: "admin" },
+          { onConflict: "user_id,role" },
+        );
+        if (ue) return json({ error: ue.message }, 400);
+      } else {
+        const { error: de } = await admin
+          .from("user_roles").delete().eq("user_id", id).eq("role", "admin");
+        if (de) return json({ error: de.message }, 400);
+      }
+      return json({ ok: true, id, is_admin });
+    }
+
     if (action === "create") {
       const email = String(body.email ?? "").trim();
       const password = String(body.password ?? "");
@@ -124,13 +163,25 @@ Deno.serve(async (req) => {
       if (!email || !password) return json({ error: "email e password obrigatórios" }, 400);
       if (password.length < 6) return json({ error: "Senha deve ter ao menos 6 caracteres" }, 400);
 
+      // Pré-validação: email já existe?
+      const existing = buildEmailSet(await loadAllUsers());
+      if (existing.has(email.toLowerCase())) {
+        return json({ error: `Já existe um usuário com o email ${email}.` }, 409);
+      }
+
       const { data: created, error: ce } = await admin.auth.admin.createUser({
         email,
         password,
         email_confirm: true,
         user_metadata: display_name ? { full_name: display_name } : undefined,
       });
-      if (ce || !created.user) return json({ error: ce?.message ?? "Falha ao criar" }, 400);
+      if (ce || !created.user) {
+        const msg = ce?.message ?? "Falha ao criar";
+        const friendly = /already|registered|exists|duplicate/i.test(msg)
+          ? `Já existe um usuário com o email ${email}.`
+          : msg;
+        return json({ error: friendly }, 400);
+      }
 
       const newId = created.user.id;
       // O trigger handle_new_user já cria profile e role 'user'.
@@ -150,17 +201,37 @@ Deno.serve(async (req) => {
       const items = Array.isArray(body.items) ? body.items : [];
       if (!items.length) return json({ error: "Lista vazia" }, 400);
 
+      // Carrega TODOS os emails existentes uma única vez
+      const existing = buildEmailSet(await loadAllUsers());
+      // Detecta duplicatas dentro do próprio arquivo
+      const seenInBatch = new Set<string>();
+
       const results: Array<{ email: string; status: "created" | "error"; error?: string }> = [];
       for (const raw of items) {
         const email = String(raw?.email ?? "").trim();
         const password = String(raw?.password ?? "");
         const display_name = raw?.display_name ? String(raw.display_name) : null;
         const is_admin = !!raw?.is_admin;
+        const emailLc = email.toLowerCase();
 
-        if (!email || !password || password.length < 6) {
-          results.push({ email, status: "error", error: "Email/senha inválidos (mín. 6)" });
+        if (!email) {
+          results.push({ email, status: "error", error: "Email vazio" });
           continue;
         }
+        if (!password || password.length < 6) {
+          results.push({ email, status: "error", error: "Senha inválida (mínimo 6 caracteres)" });
+          continue;
+        }
+        if (existing.has(emailLc)) {
+          results.push({ email, status: "error", error: "Email já cadastrado no sistema" });
+          continue;
+        }
+        if (seenInBatch.has(emailLc)) {
+          results.push({ email, status: "error", error: "Email duplicado dentro do arquivo" });
+          continue;
+        }
+        seenInBatch.add(emailLc);
+
         const { data: created, error: ce } = await admin.auth.admin.createUser({
           email,
           password,
@@ -168,9 +239,16 @@ Deno.serve(async (req) => {
           user_metadata: display_name ? { full_name: display_name } : undefined,
         });
         if (ce || !created.user) {
-          results.push({ email, status: "error", error: ce?.message ?? "Falha" });
+          const msg = ce?.message ?? "Falha";
+          const friendly = /already|registered|exists|duplicate/i.test(msg)
+            ? "Email já cadastrado no sistema"
+            : msg;
+          results.push({ email, status: "error", error: friendly });
           continue;
         }
+        // marca como cadastrado para impedir reprocessamento
+        existing.add(emailLc);
+
         const newId = created.user.id;
         if (display_name) {
           await admin.from("profiles").upsert({ id: newId, display_name });

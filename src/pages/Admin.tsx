@@ -231,9 +231,44 @@ const Admin = () => {
                     </TableCell>
                     <TableCell className="text-sm text-muted-foreground">{u.email ?? "—"}</TableCell>
                     <TableCell>
-                      {u.is_admin
-                        ? <Badge className="bg-primary text-primary-foreground">Admin</Badge>
-                        : <Badge variant="outline">Usuário</Badge>}
+                      <div className="flex items-center gap-2">
+                        <Switch
+                          checked={u.is_admin}
+                          disabled={u.id === user?.id}
+                          aria-label="Alternar permissão de admin"
+                          onCheckedChange={async (checked) => {
+                            if (u.id === user?.id) return;
+                            // Optimistic update
+                            const prev = u.is_admin;
+                            setUsers((list) => list.map((x) =>
+                              x.id === u.id
+                                ? { ...x, is_admin: checked, roles: checked
+                                    ? Array.from(new Set([...x.roles, "admin"]))
+                                    : x.roles.filter((r) => r !== "admin") }
+                                : x
+                            ));
+                            const { data, error } = await supabase.functions.invoke("admin-users", {
+                              body: { action: "set_admin", id: u.id, is_admin: checked },
+                            });
+                            if (error || data?.error) {
+                              // rollback
+                              setUsers((list) => list.map((x) =>
+                                x.id === u.id
+                                  ? { ...x, is_admin: prev, roles: prev
+                                      ? Array.from(new Set([...x.roles, "admin"]))
+                                      : x.roles.filter((r) => r !== "admin") }
+                                  : x
+                              ));
+                              toast.error(data?.error ?? "Falha ao atualizar permissão");
+                            } else {
+                              toast.success(checked ? "Promovido a admin" : "Removido de admin");
+                            }
+                          }}
+                        />
+                        {u.is_admin
+                          ? <Badge className="bg-primary text-primary-foreground">Admin</Badge>
+                          : <Badge variant="outline">Usuário</Badge>}
+                      </div>
                     </TableCell>
                     <TableCell className="text-sm">
                       {u.last_sign_in_at
@@ -551,15 +586,35 @@ const ImportResultDialog = ({
   };
   onClose: () => void;
 }) => {
+  const errors = result?.results.filter((r) => r.status === "error") ?? [];
+  const duplicates = errors.filter((r) => /j[áa] cadastrad|duplicad/i.test(r.error ?? "")).length;
+  const otherErrors = errors.length - duplicates;
+
   return (
     <Dialog open={!!result} onOpenChange={(o) => !o && onClose()}>
-      <DialogContent className="max-w-lg">
+      <DialogContent className="max-w-2xl">
         <DialogHeader>
           <DialogTitle>Resultado da importação</DialogTitle>
           <DialogDescription>
-            {result?.created ?? 0} de {result?.total ?? 0} usuários foram criados com sucesso.
+            {result?.created ?? 0} de {result?.total ?? 0} usuários criados com sucesso.
           </DialogDescription>
         </DialogHeader>
+
+        <div className="grid gap-2 sm:grid-cols-3">
+          <div className="rounded-lg border bg-success/5 p-3">
+            <p className="text-xs text-muted-foreground">Criados</p>
+            <p className="text-xl font-bold text-success">{result?.created ?? 0}</p>
+          </div>
+          <div className="rounded-lg border bg-warning/5 p-3">
+            <p className="text-xs text-muted-foreground">Já existiam</p>
+            <p className="text-xl font-bold">{duplicates}</p>
+          </div>
+          <div className="rounded-lg border bg-destructive/5 p-3">
+            <p className="text-xs text-muted-foreground">Outros erros</p>
+            <p className="text-xl font-bold text-destructive">{otherErrors}</p>
+          </div>
+        </div>
+
         <div className="max-h-80 overflow-auto rounded-md border">
           <Table>
             <TableHeader>
@@ -570,17 +625,22 @@ const ImportResultDialog = ({
               </TableRow>
             </TableHeader>
             <TableBody>
-              {result?.results.map((r, i) => (
-                <TableRow key={i}>
-                  <TableCell className="text-sm">{r.email || "—"}</TableCell>
-                  <TableCell>
-                    {r.status === "created"
-                      ? <Badge className="bg-success text-success-foreground">Criado</Badge>
-                      : <Badge variant="destructive">Erro</Badge>}
-                  </TableCell>
-                  <TableCell className="text-xs text-muted-foreground">{r.error ?? "—"}</TableCell>
-                </TableRow>
-              ))}
+              {result?.results.map((r, i) => {
+                const isDup = r.status === "error" && /j[áa] cadastrad|duplicad/i.test(r.error ?? "");
+                return (
+                  <TableRow key={i}>
+                    <TableCell className="text-sm">{r.email || "—"}</TableCell>
+                    <TableCell>
+                      {r.status === "created"
+                        ? <Badge className="bg-success text-success-foreground">Criado</Badge>
+                        : isDup
+                          ? <Badge variant="outline" className="border-warning text-warning">Já existia</Badge>
+                          : <Badge variant="destructive">Erro</Badge>}
+                    </TableCell>
+                    <TableCell className="text-xs text-muted-foreground">{r.error ?? "—"}</TableCell>
+                  </TableRow>
+                );
+              })}
             </TableBody>
           </Table>
         </div>
