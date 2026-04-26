@@ -407,6 +407,28 @@ const BriefingEditor = () => {
                 </div>
               )}
 
+              {/* CTA contextual nas seções da estratégia ativa */}
+              {strat && currentIndex >= FIXED_SECTIONS.length && (
+                <div className="flex flex-col gap-2 rounded-lg border border-primary/30 bg-primary-soft/30 p-3 sm:flex-row sm:items-center sm:justify-between">
+                  <div className="flex items-start gap-2 text-sm">
+                    <Sparkles className="mt-0.5 h-4 w-4 shrink-0 text-primary" />
+                    <span>
+                      Use a IA para preencher os campos textuais desta estratégia com base no Avatar e no Mapa da Empatia.
+                    </span>
+                  </div>
+                  <div className="flex shrink-0 gap-2">
+                    <Button size="sm" variant="outline" onClick={() => handleSuggestStrategy(false)} disabled={suggestingStrategy}>
+                      {suggestingStrategy ? <Loader2 className="mr-2 h-4 w-4 animate-spin" /> : <Sparkles className="mr-2 h-4 w-4" />}
+                      Preencher vazios
+                    </Button>
+                    <Button size="sm" onClick={() => handleSuggestStrategy(true)} disabled={suggestingStrategy}>
+                      <RefreshCw className="mr-2 h-4 w-4" />
+                      Sobrescrever tudo
+                    </Button>
+                  </div>
+                </div>
+              )}
+
               {/* Status do Mapa da Empatia */}
               {section.id === "mapaEmpatia" && !empathyValidation.ok && (
                 <div className="flex items-start gap-2 rounded-lg border border-destructive/40 bg-destructive/10 p-3 text-sm">
