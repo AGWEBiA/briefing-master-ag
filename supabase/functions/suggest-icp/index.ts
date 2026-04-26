@@ -172,17 +172,23 @@ Deno.serve(async (req) => {
       "REGRAS OBRIGATÓRIAS:\n" +
       "1. Baseie-se EXCLUSIVAMENTE nas informações do briefing. Nunca invente números, nomes próprios, depoimentos ou estatísticas.\n" +
       "2. Quando o briefing não fornecer base, prefira inferências CONSERVADORAS e GENÉRICAS do nicho/categoria — sem dados específicos.\n" +
-      "3. Cada quadrante do mapa da empatia deve ter no mínimo 3-4 frases concretas (não use generalidades vazias do tipo 'quer ter sucesso').\n" +
-      "4. Para dores/desejos/objeções, seja específico ao nicho identificado e ao formato de entrega.\n" +
-      "5. Use português do Brasil. Tom direto, sem floreios.\n" +
-      "6. Devolva SEMPRE chamando a tool `suggest_icp`.";
+      "3. Para dores/desejos/objeções, seja específico ao nicho identificado e ao formato de entrega.\n" +
+      "4. Use português do Brasil. Tom direto, sem floreios.\n\n" +
+      "MAPA DA EMPATIA (campos me_*) — siga o método canônico Xplane/Dave Gray, com as perguntas-guia abaixo. Cada quadrante exige itens CONCRETOS (não 'quer ter sucesso'):\n" +
+      "• me_ve (VÊ): Como é o mundo dele? Como são os amigos? O que vê concorrentes oferecendo? Que conteúdos consome? Que ofertas aparecem na frente dele? ≥3 itens.\n" +
+      "• me_ouve (OUVE): Quem o influencia (família, amigos, chefe, ídolos)? Marcas favoritas? Podcasts/canais/comunidades que consome? Indique apoio, pressão ou ruído. ≥3 fontes.\n" +
+      "• me_pensaSente (PENSA E SENTE): Como se sente em relação ao mundo? Preocupações reais? Sonhos? Crenças limitantes? O que NÃO admite em voz alta. ≥3 frases.\n" +
+      "• me_falaFaz (FALA E FAZ): Sobre o que costuma falar? Como age? Como se apresenta? Hobbies? Contradições entre discurso e prática? ≥3 comportamentos.\n" +
+      "• me_dores (DORES): Do que tem medo? Frustrações? Obstáculos (tempo/dinheiro/conhecimento/suporte/autoestima)? Riscos percebidos para comprar? ≥4 itens.\n" +
+      "• me_ganhos (GANHOS/NECESSIDADES): O que é sucesso para ele? Onde quer chegar? O que acabaria com seus problemas? Tangíveis (dinheiro, tempo, métricas com prazo) + intangíveis (orgulho, status, reconhecimento). ≥4 itens.\n\n" +
+      "5. Devolva SEMPRE chamando a tool `suggest_icp`.";
 
     const userPrompt =
       `=== BRIEFING ATUAL DO PRODUTO ===\n${summary}\n\n` +
       `=== TAREFA ===\n` +
       `Defina o ICP (Perfil de Cliente Ideal) deste produto preenchendo todos os campos da tool 'suggest_icp'. ` +
-      `Comece pela descricaoAvatar (perfil completo) e em seguida derive dores, desejos, objeções, nível de consciência, canais e os 6 quadrantes do mapa da empatia. ` +
-      `Garanta coerência: as dores do ICP devem casar com a transformação prometida; os desejos devem casar com os benefícios; o nível de consciência deve casar com o preço e a complexidade do produto.`;
+      `Comece pela descricaoAvatar (perfil completo: idade, profissão, momento de vida/carreira, comportamento de consumo). Em seguida derive dores, desejos, objeções, nível de consciência, canais e os 6 quadrantes do mapa da empatia (Xplane/Dave Gray) seguindo as perguntas-guia do system prompt. ` +
+      `Garanta coerência: as dores do ICP devem casar com a transformação prometida; os desejos com os benefícios; o nível de consciência com o preço e a complexidade do produto.`;
 
     const tool = buildToolSchema();
     const r = await fetch(url, {
