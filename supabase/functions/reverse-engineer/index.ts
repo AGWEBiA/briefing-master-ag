@@ -310,23 +310,8 @@ Deno.serve(async (req) => {
       });
     }
 
-    // 2) Pesquisa adicional (opcional)
-    let research = "";
-    if (byProvider.perplexity?.api_key) {
-      try {
-        research = await researchWithPerplexity(
-          `Pesquise no Google e em fontes públicas informações relevantes sobre o produto/oferta da página ${url}. Resuma público-alvo, dores, desejos, diferenciais e posicionamento.`,
-          byProvider.perplexity.api_key,
-          byProvider.perplexity.default_model ?? "sonar",
-        );
-      } catch (e) {
-        console.warn("Perplexity falhou:", (e as Error).message);
-      }
-    }
+    // 2) Pesquisa adicional (opcional) — focada em público-alvo/nicho
 
-    // 3) Engine de LLM
-    let engineKey = "";
-    let engineModel = "";
     // 2) Pesquisa adicional (opcional) — focada em público-alvo/nicho
     let research = "";
     let citations: string[] = [];
