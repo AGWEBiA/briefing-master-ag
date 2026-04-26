@@ -2,7 +2,7 @@ import { useEffect, useMemo, useRef, useState } from "react";
 import { useNavigate, useParams, Link } from "react-router-dom";
 import {
   ArrowLeft, ChevronLeft, ChevronRight, Download, FileText, FileType, Loader2,
-  RefreshCw, Rocket, Save, Sparkles, Wand2,
+  RefreshCw, Rocket, Save, Sparkles, Wand2, ClipboardCheck, AlertTriangle,
 } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardHeader } from "@/components/ui/card";
@@ -25,7 +25,8 @@ import { ReverseEngineerDialog } from "@/components/briefing/ReverseEngineerDial
 import {
   FIXED_SECTIONS, getStrategy, type Section, type StrategyId,
 } from "@/lib/briefingSchema";
-import { exportBriefing, type ExportFormat } from "@/lib/exportBriefing";
+import { exportBriefing, downloadMarkdown, type ExportFormat } from "@/lib/exportBriefing";
+import { buildReportMarkdown, validateEmpathyMap } from "@/lib/briefingReport";
 
 type Data = Record<string, string>;
 
@@ -42,6 +43,11 @@ const BriefingEditor = () => {
   const [currentIndex, setCurrentIndex] = useState(0);
   const [visited, setVisited] = useState<Set<string>>(new Set());
   const [sheetOpen, setSheetOpen] = useState(false);
+  const [exporting, setExporting] = useState(false);
+  const [exportingFormat, setExportingFormat] = useState<ExportFormat | "report" | null>(null);
+  const [suggesting, setSuggesting] = useState(false);
+  const [highlightFields, setHighlightFields] = useState<Set<string>>(new Set());
+  const [showEmpathyErrors, setShowEmpathyErrors] = useState(false);
 
   const skipNextSave = useRef(true);
 
@@ -65,12 +71,10 @@ const BriefingEditor = () => {
     [strat],
   );
 
-  // Clamp index when sections list shrinks
   useEffect(() => {
     if (currentIndex >= sections.length) setCurrentIndex(sections.length - 1);
   }, [sections.length, currentIndex]);
 
-  // Mark current as visited
   useEffect(() => {
     if (loading) return;
     const sec = sections[currentIndex];
@@ -96,32 +100,73 @@ const BriefingEditor = () => {
     return () => clearTimeout(t);
   }, [data, strategyId, id, loading]); // eslint-disable-line
 
-  const updateField = (fid: string, value: string) =>
+  const updateField = (fid: string, value: string) => {
     setData((d) => ({ ...d, [fid]: value }));
+    if (highlightFields.has(fid)) {
+      setHighlightFields((prev) => {
+        const next = new Set(prev);
+        next.delete(fid);
+        return next;
+      });
+    }
+  };
 
   const section = sections[currentIndex];
   const isLast = currentIndex === sections.length - 1;
   const isFirst = currentIndex === 0;
 
-  const [exporting, setExporting] = useState(false);
-  const [suggesting, setSuggesting] = useState(false);
+  const empathyValidation = useMemo(() => validateEmpathyMap(data), [data]);
+  const empathyErrorMap = useMemo(() => {
+    if (!showEmpathyErrors) return {} as Record<string, string>;
+    return empathyValidation.errors.reduce<Record<string, string>>((acc, e) => {
+      acc[e.field] = `Mínimo ${e.min} itens (atual: ${e.current}). Separe por vírgula ou nova linha.`;
+      return acc;
+    }, {});
+  }, [empathyValidation, showEmpathyErrors]);
 
-  const handleExport = (format: ExportFormat = "md") => {
+  const handleExport = async (format: ExportFormat = "md") => {
     setExporting(true);
+    setExportingFormat(format);
     try {
+      // Pequeno delay para o spinner aparecer mesmo em export muito rápido
+      await new Promise((r) => setTimeout(r, 50));
       const filename = exportBriefing(format, data, strategyId);
       toast.success(`Briefing exportado: ${filename}`);
     } catch (e) {
       toast.error(`Falha ao exportar: ${(e as Error).message}`);
     } finally {
       setExporting(false);
+      setExportingFormat(null);
+    }
+  };
+
+  const handleGenerateReport = async () => {
+    setExporting(true);
+    setExportingFormat("report");
+    try {
+      await new Promise((r) => setTimeout(r, 50));
+      const { filename, content } = buildReportMarkdown(data, strategyId);
+      downloadMarkdown(filename, content);
+      toast.success(`Relatório gerado: ${filename}`);
+    } catch (e) {
+      toast.error(`Falha ao gerar relatório: ${(e as Error).message}`);
+    } finally {
+      setExporting(false);
+      setExportingFormat(null);
     }
   };
 
   const handleFinalize = async () => {
     if (!id) return;
+    if (!empathyValidation.ok) {
+      setShowEmpathyErrors(true);
+      const idx = sections.findIndex((s) => s.id === "mapaEmpatia");
+      if (idx >= 0) setCurrentIndex(idx);
+      toast.error(`Mapa da Empatia incompleto: ${empathyValidation.errors.length} quadrante(s) abaixo do mínimo.`);
+      return;
+    }
     await supabase.from("briefings").update({ is_complete: true }).eq("id", id);
-    handleExport("pdf");
+    await handleExport("pdf");
   };
 
   const handleReset = async () => {
@@ -130,6 +175,8 @@ const BriefingEditor = () => {
     setStrategyId(null);
     setCurrentIndex(0);
     setVisited(new Set());
+    setHighlightFields(new Set());
+    setShowEmpathyErrors(false);
     toast.success("Formulário reiniciado.");
   };
 
@@ -157,8 +204,15 @@ const BriefingEditor = () => {
       toast.error("A IA não retornou dados de ICP.");
       return;
     }
-    setData((prev) => ({ ...prev, ...(res.data as Record<string, string>) }));
-    toast.success("Cliente Ideal sugerido — campos do Avatar e Mapa da Empatia preenchidos.");
+    const incoming = res.data as Record<string, string>;
+    // marca como sobrescrito apenas o que veio com valor não-vazio
+    const overwritten = new Set<string>();
+    Object.entries(incoming).forEach(([k, v]) => {
+      if ((v ?? "").trim().length > 0) overwritten.add(k);
+    });
+    setData((prev) => ({ ...prev, ...incoming }));
+    setHighlightFields(overwritten);
+    toast.success(`Cliente Ideal sugerido — ${overwritten.size} campo(s) preenchido(s)/sobrescrito(s).`);
     const idx = sections.findIndex((s) => s.id === "avatar");
     if (idx >= 0) setCurrentIndex(idx);
   };
@@ -173,6 +227,45 @@ const BriefingEditor = () => {
 
   const SectionIcon = section.icon;
 
+  const ExportDropdown = ({ size = "sm" as const, variant = "outline" as const, fullWidth = false }) => (
+    <DropdownMenu>
+      <DropdownMenuTrigger asChild>
+        <Button variant={variant} size={size} disabled={exporting} className={fullWidth ? "flex-1" : undefined}>
+          {exporting && exportingFormat !== "report" ? (
+            <Loader2 className="mr-2 h-4 w-4 animate-spin" />
+          ) : (
+            <Download className="mr-2 h-4 w-4" />
+          )}
+          {exporting && exportingFormat !== "report"
+            ? `Exportando ${exportingFormat?.toUpperCase()}...`
+            : "Exportar"}
+        </Button>
+      </DropdownMenuTrigger>
+      <DropdownMenuContent align="end">
+        <DropdownMenuItem onClick={() => handleExport("pdf")} disabled={exporting}>
+          <FileType className="mr-2 h-4 w-4" /> PDF (.pdf)
+        </DropdownMenuItem>
+        <DropdownMenuItem onClick={() => handleExport("doc")} disabled={exporting}>
+          <FileText className="mr-2 h-4 w-4" /> Word (.doc)
+        </DropdownMenuItem>
+        <DropdownMenuItem onClick={() => handleExport("md")} disabled={exporting}>
+          <FileText className="mr-2 h-4 w-4" /> Markdown (.md)
+        </DropdownMenuItem>
+      </DropdownMenuContent>
+    </DropdownMenu>
+  );
+
+  const ReportButton = ({ size = "sm" as const, variant = "outline" as const }) => (
+    <Button variant={variant} size={size} onClick={handleGenerateReport} disabled={exporting}>
+      {exporting && exportingFormat === "report" ? (
+        <Loader2 className="mr-2 h-4 w-4 animate-spin" />
+      ) : (
+        <ClipboardCheck className="mr-2 h-4 w-4" />
+      )}
+      Gerar relatório
+    </Button>
+  );
+
   return (
     <div className="min-h-screen bg-background">
       <AppHeader>
@@ -181,24 +274,8 @@ const BriefingEditor = () => {
           <Button variant="ghost" size="sm" onClick={handleReset}>
             <RefreshCw className="mr-2 h-4 w-4" /> Reiniciar
           </Button>
-          <DropdownMenu>
-            <DropdownMenuTrigger asChild>
-              <Button variant="outline" size="sm" disabled={exporting}>
-                <Download className="mr-2 h-4 w-4" /> Exportar
-              </Button>
-            </DropdownMenuTrigger>
-            <DropdownMenuContent align="end">
-              <DropdownMenuItem onClick={() => handleExport("pdf")}>
-                <FileType className="mr-2 h-4 w-4" /> PDF (.pdf)
-              </DropdownMenuItem>
-              <DropdownMenuItem onClick={() => handleExport("doc")}>
-                <FileText className="mr-2 h-4 w-4" /> Word (.doc)
-              </DropdownMenuItem>
-              <DropdownMenuItem onClick={() => handleExport("md")}>
-                <FileText className="mr-2 h-4 w-4" /> Markdown (.md)
-              </DropdownMenuItem>
-            </DropdownMenuContent>
-          </DropdownMenu>
+          <ReportButton />
+          <ExportDropdown />
         </div>
       </AppHeader>
 
@@ -276,6 +353,38 @@ const BriefingEditor = () => {
                   <Badge variant="secondary">{strat.emoji} {strat.name}</Badge>
                 )}
               </div>
+
+              {/* CTA contextual no Avatar */}
+              {section.id === "avatar" && (
+                <div className="flex flex-col gap-2 rounded-lg border border-primary/30 bg-primary-soft/30 p-3 sm:flex-row sm:items-center sm:justify-between">
+                  <div className="flex items-start gap-2 text-sm">
+                    <Sparkles className="mt-0.5 h-4 w-4 shrink-0 text-primary" />
+                    <span>
+                      Use a IA para sugerir um Cliente Ideal a partir do Produto, Nicho e Transformação já preenchidos.
+                      Os campos sobrescritos ficarão destacados.
+                    </span>
+                  </div>
+                  <Button size="sm" onClick={handleSuggestICP} disabled={suggesting} className="shrink-0">
+                    {suggesting ? <Loader2 className="mr-2 h-4 w-4 animate-spin" /> : <Sparkles className="mr-2 h-4 w-4" />}
+                    Sugerir Cliente Ideal
+                  </Button>
+                </div>
+              )}
+
+              {/* Status do Mapa da Empatia */}
+              {section.id === "mapaEmpatia" && !empathyValidation.ok && (
+                <div className="flex items-start gap-2 rounded-lg border border-destructive/40 bg-destructive/10 p-3 text-sm">
+                  <AlertTriangle className="mt-0.5 h-4 w-4 shrink-0 text-destructive" />
+                  <div>
+                    <p className="font-medium">
+                      Mapa da Empatia incompleto — {empathyValidation.errors.length} quadrante(s) abaixo do mínimo.
+                    </p>
+                    <p className="text-xs text-muted-foreground">
+                      Cada quadrante exige itens concretos (separe por vírgula ou nova linha). Mínimo: VÊ/OUVE/PENSA-SENTE/FALA-FAZ ≥ 3, DORES/GANHOS ≥ 4.
+                    </p>
+                  </div>
+                </div>
+              )}
             </CardHeader>
             <CardContent className="space-y-6 pt-6">
               {/* Strategy picker injected at the top of section "estrategia" */}
@@ -312,6 +421,9 @@ const BriefingEditor = () => {
                             field={f}
                             value={data[f.id] ?? ""}
                             onChange={(v) => updateField(f.id, v)}
+                            allData={data}
+                            highlighted={highlightFields.has(f.id)}
+                            error={empathyErrorMap[f.id]}
                           />
                         </div>
                       );
@@ -329,8 +441,9 @@ const BriefingEditor = () => {
             </Button>
             {isLast ? (
               <Button className="bg-success text-success-foreground hover:bg-success/90"
-                onClick={handleFinalize}>
-                <Download className="mr-2 h-4 w-4" /> Finalizar e Exportar
+                onClick={handleFinalize} disabled={exporting}>
+                {exporting ? <Loader2 className="mr-2 h-4 w-4 animate-spin" /> : <Download className="mr-2 h-4 w-4" />}
+                Finalizar e Exportar
               </Button>
             ) : (
               <Button onClick={() => setCurrentIndex((i) => Math.min(sections.length - 1, i + 1))}>
@@ -360,9 +473,8 @@ const BriefingEditor = () => {
             <Button variant="outline" size="sm" onClick={handleReset}>
               <RefreshCw className="mr-2 h-4 w-4" /> Reiniciar
             </Button>
-            <Button variant="outline" size="sm" onClick={() => handleExport("pdf")}>
-              <Download className="mr-2 h-4 w-4" /> Exportar
-            </Button>
+            <ReportButton />
+            <ExportDropdown />
           </div>
         </main>
       </div>
