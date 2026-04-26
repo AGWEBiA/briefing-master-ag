@@ -297,10 +297,28 @@ const Admin = () => {
             <Table>
               <TableHeader>
                 <TableRow>
-                  <TableHead>Nome</TableHead>
+                  <TableHead>
+                    <button
+                      type="button"
+                      onClick={() => toggleUserSort("name")}
+                      className="flex items-center gap-1.5 font-medium hover:text-foreground"
+                    >
+                      Nome
+                      <SortIcon active={userSort.key === "name"} dir={userSort.dir} />
+                    </button>
+                  </TableHead>
                   <TableHead>Email</TableHead>
                   <TableHead>Role</TableHead>
-                  <TableHead>Último acesso</TableHead>
+                  <TableHead>
+                    <button
+                      type="button"
+                      onClick={() => toggleUserSort("last_sign_in")}
+                      className="flex items-center gap-1.5 font-medium hover:text-foreground"
+                    >
+                      Último acesso
+                      <SortIcon active={userSort.key === "last_sign_in"} dir={userSort.dir} />
+                    </button>
+                  </TableHead>
                   <TableHead className="text-right">Ações</TableHead>
                 </TableRow>
               </TableHeader>
