@@ -309,7 +309,7 @@ export const STRATEGIES: Strategy[] = [
         { id: "cp_responsabilidades", label: "Responsabilidades Detalhadas de Cada Parte", type: "textarea", rows: 4 },
       ]}]},
       { id: "cp_estrategia", title: "Estratégia de Lançamento", icon: Target, groups: [{ fields: [
-        { id: "cp_estrategiaEscolhida", label: "Estratégia de Lançamento Escolhida para a Co-produção", type: "select", required: true, options: ["Lançamento Pago", "Lançamento Orgânico (FL)", "Lançamento Semente", "Lançamento Interno", "Perpétuo/Evergreen"] },
+        { id: "cp_estrategiaEscolhida", label: "Estratégia de Lançamento Escolhida para a Co-produção", type: "select", required: true, options: ["Lançamento Pago", "Lançamento Orgânico (FL)", "Lançamento Semente", "Lançamento Interno", "Perpétuo/Evergreen", "Venda Direta"] },
       ]}]},
     ],
   },
