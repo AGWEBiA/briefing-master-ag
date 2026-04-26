@@ -13,7 +13,7 @@ import { lovable } from "@/integrations/lovable";
 import { useAuth } from "@/contexts/AuthContext";
 
 const emailSchema = z.string().trim().email("E-mail inválido").max(255);
-const pwdSchema = z.string().min(8, "Mínimo 8 caracteres").max(72);
+
 
 const GoogleIcon = () => (
   <svg viewBox="0 0 24 24" className="h-4 w-4">
