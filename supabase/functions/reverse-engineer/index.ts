@@ -338,23 +338,54 @@ Deno.serve(async (req) => {
 
     // 1) Scrape
     let pageContent = "";
+    let scrapeMethod: "firecrawl" | "fetch" | "perplexity-fallback" = "fetch";
     if (byProvider.firecrawl?.api_key) {
       try {
         pageContent = await scrapeWithFirecrawl(url, byProvider.firecrawl.api_key);
+        if (pageContent) scrapeMethod = "firecrawl";
       } catch (e) {
         console.warn("Firecrawl falhou, caindo para fetch direto:", (e as Error).message);
       }
     }
-    if (!pageContent) pageContent = await scrapeBasic(url);
+    if (!pageContent) {
+      try {
+        pageContent = await scrapeBasic(url);
+      } catch (e) {
+        console.warn("Fetch direto falhou:", (e as Error).message);
+      }
+    }
+
+    // Fallback: se o conteúdo está fraco/vazio (site bloqueia bots ou é SPA),
+    // pede para a Perplexity navegar e resumir a página.
+    if ((!pageContent || pageContent.length < 300) && byProvider.perplexity?.api_key) {
+      try {
+        const fb = await researchWithPerplexity(
+          pageContent || `Página inacessível por scraping direto. URL: ${url}`,
+          url,
+          byProvider.perplexity.api_key,
+          byProvider.perplexity.default_model ?? "sonar",
+        );
+        if (fb.content && fb.content.length > 200) {
+          pageContent = `# Conteúdo recuperado via Perplexity (scraping direto bloqueado)\n\n${fb.content}`;
+          scrapeMethod = "perplexity-fallback";
+        }
+      } catch (e) {
+        console.warn("Perplexity fallback falhou:", (e as Error).message);
+      }
+    }
+
     if (!pageContent || pageContent.length < 100) {
-      return new Response(JSON.stringify({ error: "Não foi possível extrair conteúdo da URL." }), {
-        status: 422, headers: { ...corsHeaders, "Content-Type": "application/json" },
-      });
+      return new Response(
+        JSON.stringify({
+          error:
+            "Não foi possível extrair conteúdo da URL. O site pode bloquear acesso automatizado. Conecte Firecrawl ou Perplexity em Integrações para contornar.",
+        }),
+        { status: 422, headers: { ...corsHeaders, "Content-Type": "application/json" } },
+      );
     }
 
     // 2) Pesquisa adicional (opcional) — focada em público-alvo/nicho
 
-    // 2) Pesquisa adicional (opcional) — focada em público-alvo/nicho
     let research = "";
     let citations: string[] = [];
     if (byProvider.perplexity?.api_key) {
