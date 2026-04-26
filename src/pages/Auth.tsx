@@ -97,32 +97,17 @@ const Auth = () => {
               </div>
             </div>
 
-            <Tabs defaultValue="signin">
-              <TabsList className="grid w-full grid-cols-2">
-                <TabsTrigger value="signin">Entrar</TabsTrigger>
-                <TabsTrigger value="signup">Criar conta</TabsTrigger>
-              </TabsList>
+            <form onSubmit={handleSignIn} className="space-y-3">
+              <FieldEmail value={email} onChange={setEmail} />
+              <FieldPassword value={password} onChange={setPassword} />
+              <Button type="submit" className="w-full" disabled={busy}>
+                {busy ? <Loader2 className="h-4 w-4 animate-spin" /> : "Entrar"}
+              </Button>
+            </form>
 
-              <TabsContent value="signin" className="mt-4">
-                <form onSubmit={handleSignIn} className="space-y-3">
-                  <FieldEmail value={email} onChange={setEmail} />
-                  <FieldPassword value={password} onChange={setPassword} />
-                  <Button type="submit" className="w-full" disabled={busy}>
-                    {busy ? <Loader2 className="h-4 w-4 animate-spin" /> : "Entrar"}
-                  </Button>
-                </form>
-              </TabsContent>
-
-              <TabsContent value="signup" className="mt-4">
-                <form onSubmit={handleSignUp} className="space-y-3">
-                  <FieldEmail value={email} onChange={setEmail} />
-                  <FieldPassword value={password} onChange={setPassword} hint="Mínimo 8 caracteres" />
-                  <Button type="submit" className="w-full" disabled={busy}>
-                    {busy ? <Loader2 className="h-4 w-4 animate-spin" /> : "Criar conta"}
-                  </Button>
-                </form>
-              </TabsContent>
-            </Tabs>
+            <p className="pt-2 text-center text-xs text-muted-foreground">
+              Não tem acesso? Solicite a um administrador para criar sua conta.
+            </p>
           </CardContent>
         </Card>
       </div>
