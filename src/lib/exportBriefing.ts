@@ -461,7 +461,7 @@ export function exportBriefingPdf(
     doc.setFontSize(fontSize);
     setText(opts.color ?? PALETTE.ink);
     const w = opts.w ?? contentW;
-    const lines = doc.splitTextToSize(text, w);
+    const lines = doc.splitTextToSize(stripEmojis(text), w);
     const lineHeight = fontSize * 1.3;
     for (const line of lines) {
       ensureSpace(lineHeight);
