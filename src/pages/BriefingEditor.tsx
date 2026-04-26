@@ -221,6 +221,32 @@ const BriefingEditor = () => {
     if (idx >= 0) setCurrentIndex(idx);
   };
 
+  const handleRefillEmpathy = async () => {
+    if (!data.descricaoAvatar && !data.nicho && !data.transformacaoPrincipal) {
+      toast.error("Preencha o produto e o avatar antes de refazer o Mapa da Empatia.");
+      return;
+    }
+    setRefillingEmpathy(true);
+    const { data: res, error } = await supabase.functions.invoke("suggest-icp", {
+      body: { briefing: data, onlyEmpathy: true },
+    });
+    setRefillingEmpathy(false);
+    if (error || res?.error) {
+      toast.error(res?.error ?? (error as { message?: string })?.message ?? "Falha ao refazer o Mapa da Empatia.");
+      return;
+    }
+    const incoming = (res?.data ?? {}) as Record<string, string>;
+    const keys = Object.keys(incoming).filter((k) => k.startsWith("me_") && incoming[k]?.trim());
+    if (keys.length === 0) {
+      toast.error("A IA não retornou conteúdo para o Mapa da Empatia.");
+      return;
+    }
+    setData((prev) => ({ ...prev, ...Object.fromEntries(keys.map((k) => [k, incoming[k]])) }));
+    setHighlightFields(new Set(keys));
+    setShowEmpathyErrors(false);
+    toast.success(`Mapa da Empatia refeito — ${keys.length} quadrante(s) atualizado(s).`);
+  };
+
   const handleSuggestStrategy = async (overwrite = false) => {
     if (!strategyId) {
       toast.error("Escolha uma estratégia antes de pedir sugestões.");
