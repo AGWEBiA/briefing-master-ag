@@ -116,6 +116,77 @@ Deno.serve(async (req) => {
       return json({ ok: true });
     }
 
+    if (action === "create") {
+      const email = String(body.email ?? "").trim();
+      const password = String(body.password ?? "");
+      const display_name = body.display_name ? String(body.display_name) : null;
+      const is_admin = !!body.is_admin;
+      if (!email || !password) return json({ error: "email e password obrigatórios" }, 400);
+      if (password.length < 6) return json({ error: "Senha deve ter ao menos 6 caracteres" }, 400);
+
+      const { data: created, error: ce } = await admin.auth.admin.createUser({
+        email,
+        password,
+        email_confirm: true,
+        user_metadata: display_name ? { full_name: display_name } : undefined,
+      });
+      if (ce || !created.user) return json({ error: ce?.message ?? "Falha ao criar" }, 400);
+
+      const newId = created.user.id;
+      // O trigger handle_new_user já cria profile e role 'user'.
+      if (display_name) {
+        await admin.from("profiles").upsert({ id: newId, display_name });
+      }
+      if (is_admin) {
+        await admin.from("user_roles").upsert(
+          { user_id: newId, role: "admin" },
+          { onConflict: "user_id,role" },
+        );
+      }
+      return json({ ok: true, id: newId });
+    }
+
+    if (action === "bulk_create") {
+      const items = Array.isArray(body.items) ? body.items : [];
+      if (!items.length) return json({ error: "Lista vazia" }, 400);
+
+      const results: Array<{ email: string; status: "created" | "error"; error?: string }> = [];
+      for (const raw of items) {
+        const email = String(raw?.email ?? "").trim();
+        const password = String(raw?.password ?? "");
+        const display_name = raw?.display_name ? String(raw.display_name) : null;
+        const is_admin = !!raw?.is_admin;
+
+        if (!email || !password || password.length < 6) {
+          results.push({ email, status: "error", error: "Email/senha inválidos (mín. 6)" });
+          continue;
+        }
+        const { data: created, error: ce } = await admin.auth.admin.createUser({
+          email,
+          password,
+          email_confirm: true,
+          user_metadata: display_name ? { full_name: display_name } : undefined,
+        });
+        if (ce || !created.user) {
+          results.push({ email, status: "error", error: ce?.message ?? "Falha" });
+          continue;
+        }
+        const newId = created.user.id;
+        if (display_name) {
+          await admin.from("profiles").upsert({ id: newId, display_name });
+        }
+        if (is_admin) {
+          await admin.from("user_roles").upsert(
+            { user_id: newId, role: "admin" },
+            { onConflict: "user_id,role" },
+          );
+        }
+        results.push({ email, status: "created" });
+      }
+      const created = results.filter((r) => r.status === "created").length;
+      return json({ ok: true, created, total: results.length, results });
+    }
+
     if (action === "delete") {
       const id = String(body.id ?? "");
       if (!id) return json({ error: "id required" }, 400);
