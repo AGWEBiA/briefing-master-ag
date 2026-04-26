@@ -44,6 +44,10 @@ const Integrations = () => {
     perplexity: false, openai: false, gemini: false, firecrawl: false,
   });
   const [saving, setSaving] = useState<AIProvider | null>(null);
+  const [testing, setTesting] = useState<AIProvider | null>(null);
+  const [testResults, setTestResults] = useState<Record<AIProvider, { ok: boolean; message: string } | null>>({
+    perplexity: null, openai: null, gemini: null, firecrawl: null,
+  });
 
   useEffect(() => {
     if (!user) return;
