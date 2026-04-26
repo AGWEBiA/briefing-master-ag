@@ -39,27 +39,7 @@ const Auth = () => {
     }
   }, [user, loading, navigate, location.state]);
 
-  const handleSignUp = async (e: React.FormEvent) => {
-    e.preventDefault();
-    const ev = emailSchema.safeParse(email);
-    const pv = pwdSchema.safeParse(password);
-    if (!ev.success) return toast.error(ev.error.issues[0].message);
-    if (!pv.success) return toast.error(pv.error.issues[0].message);
-
-    setBusy(true);
-    const { error } = await supabase.auth.signUp({
-      email: ev.data,
-      password: pv.data,
-      options: { emailRedirectTo: `${window.location.origin}/dashboard` },
-    });
-    setBusy(false);
-    if (error) {
-      if (error.message.includes("already")) toast.error("Este e-mail já está cadastrado.");
-      else toast.error(error.message);
-      return;
-    }
-    toast.success("Conta criada! Você já pode entrar.");
-  };
+  // Cadastros são feitos exclusivamente pelo admin.
 
   const handleSignIn = async (e: React.FormEvent) => {
     e.preventDefault();
