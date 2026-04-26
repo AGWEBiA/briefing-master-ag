@@ -184,7 +184,7 @@ const sectionTableHtml = (data: Record<string, string>, section: Section) => {
   return `<table class="kv">${fieldRowsHtml(data, rows)}</table>`;
 };
 
-function buildBriefingHtml(
+export function buildBriefingHtml(
   data: Record<string, string>,
   strategyId?: string | null,
 ): string {
