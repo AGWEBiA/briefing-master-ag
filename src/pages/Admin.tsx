@@ -59,6 +59,8 @@ const Admin = () => {
   const fileRef = useRef<HTMLInputElement>(null);
   const [userSearch, setUserSearch] = useState("");
   const [userRoleFilter, setUserRoleFilter] = useState<"all" | "admin" | "user">("all");
+  const [userSort, setUserSort] = useState<{ key: "name" | "last_sign_in"; dir: "asc" | "desc" }>({ key: "last_sign_in", dir: "desc" });
+  const [briefingSort, setBriefingSort] = useState<{ key: "title" | "updated"; dir: "asc" | "desc" }>({ key: "updated", dir: "desc" });
 
   const loadUsers = async () => {
     const { data, error } = await supabase.functions.invoke("admin-users", {
