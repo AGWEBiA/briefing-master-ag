@@ -423,11 +423,12 @@ const Admin = () => {
             <Table>
               <TableHeader>
                 <TableRow>
-                  <TableHead>
+                  <TableHead aria-sort={ariaSortFor(briefingSort.key === "title", briefingSort.dir)}>
                     <button
                       type="button"
                       onClick={() => toggleBriefingSort("title")}
                       className="flex items-center gap-1.5 font-medium hover:text-foreground"
+                      aria-label={sortLabel("Título", briefingSort.key === "title", briefingSort.dir)}
                     >
                       Título
                       <SortIcon active={briefingSort.key === "title"} dir={briefingSort.dir} />
@@ -435,11 +436,12 @@ const Admin = () => {
                   </TableHead>
                   <TableHead>Usuário</TableHead>
                   <TableHead>Estratégia</TableHead><TableHead>Status</TableHead>
-                  <TableHead>
+                  <TableHead aria-sort={ariaSortFor(briefingSort.key === "updated", briefingSort.dir)}>
                     <button
                       type="button"
                       onClick={() => toggleBriefingSort("updated")}
                       className="flex items-center gap-1.5 font-medium hover:text-foreground"
+                      aria-label={sortLabel("Atualizado", briefingSort.key === "updated", briefingSort.dir)}
                     >
                       Atualizado
                       <SortIcon active={briefingSort.key === "updated"} dir={briefingSort.dir} />
