@@ -16,6 +16,8 @@ export interface Field {
   hint?: string;
   rows?: number;
   options?: string[];
+  // Permite trocar `options` em runtime com base nos valores atuais do briefing
+  optionsFn?: (data: Record<string, string>) => string[];
 }
 
 export interface SectionGroup {
