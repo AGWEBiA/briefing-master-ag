@@ -201,9 +201,18 @@ const Admin = () => {
     setBriefingSort((s) => s.key === key ? { key, dir: s.dir === "asc" ? "desc" : "asc" } : { key, dir: "asc" });
 
   const SortIcon = ({ active, dir }: { active: boolean; dir: "asc" | "desc" }) =>
-    !active ? <ArrowUpDown className="h-3.5 w-3.5 opacity-40" />
-      : dir === "asc" ? <ArrowUp className="h-3.5 w-3.5" />
-      : <ArrowDown className="h-3.5 w-3.5" />;
+    !active ? <ArrowUpDown className="h-3.5 w-3.5 opacity-40" aria-hidden="true" />
+      : dir === "asc" ? <ArrowUp className="h-3.5 w-3.5" aria-hidden="true" />
+      : <ArrowDown className="h-3.5 w-3.5" aria-hidden="true" />;
+
+  const ariaSortFor = (active: boolean, dir: "asc" | "desc"): "ascending" | "descending" | "none" =>
+    !active ? "none" : dir === "asc" ? "ascending" : "descending";
+  const sortLabel = (columnLabel: string, active: boolean, dir: "asc" | "desc") => {
+    if (!active) return `Ordenar por ${columnLabel}`;
+    const next = dir === "asc" ? "decrescente" : "crescente";
+    const current = dir === "asc" ? "crescente" : "decrescente";
+    return `${columnLabel}: ordenação ${current} ativa. Ativar para ordenar de forma ${next}.`;
+  };
 
   return (
     <div className="min-h-screen bg-background">
