@@ -25,6 +25,7 @@ import { ReverseEngineerDialog } from "@/components/briefing/ReverseEngineerDial
 import { EmpathyMapPreview } from "@/components/briefing/EmpathyMapPreview";
 import { AdsSuggestionsPanel } from "@/components/briefing/AdsSuggestionsPanel";
 import { ExportPreviewDialog } from "@/components/briefing/ExportPreviewDialog";
+import { ExecutiveSummaryDialog } from "@/components/briefing/ExecutiveSummaryDialog";
 import {
   FIXED_SECTIONS, getStrategy, type Section, type StrategyId,
 } from "@/lib/briefingSchema";
@@ -350,6 +351,7 @@ const BriefingEditor = () => {
             <RefreshCw className="mr-2 h-4 w-4" /> Reiniciar
           </Button>
           <ReportButton />
+          <ExecutiveSummaryDialog data={data} strategyId={strategyId} />
           <Button variant="outline" size="sm" onClick={() => openPreview("pdf")}>
             <Eye className="mr-2 h-4 w-4" /> Pré-visualizar
           </Button>
@@ -609,6 +611,7 @@ const BriefingEditor = () => {
               <Eye className="mr-2 h-4 w-4" /> Pré-visualizar
             </Button>
             <ReportButton />
+            <ExecutiveSummaryDialog data={data} strategyId={strategyId} />
             <ExportDropdown />
           </div>
         </main>
