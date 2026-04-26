@@ -104,18 +104,42 @@ async function scrapeWithFirecrawl(url: string, apiKey: string): Promise<string>
   return (data?.data?.markdown ?? data?.markdown ?? "").slice(0, 20000);
 }
 
-async function scrapeBasic(url: string): Promise<string> {
-  const r = await fetch(url, {
-    redirect: "follow",
-    headers: {
-      "User-Agent":
-        "Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/124.0 Safari/537.36",
-      "Accept":
-        "text/html,application/xhtml+xml,application/xml;q=0.9,image/avif,image/webp,*/*;q=0.8",
-      "Accept-Language": "pt-BR,pt;q=0.9,en;q=0.8",
-    },
-  });
-  if (!r.ok) throw new Error(`HTTP ${r.status} ao buscar a URL`);
+interface ScrapeOutcome {
+  content: string;
+  status: number;
+  blocked: boolean;
+  reason?: string;
+}
+
+async function scrapeBasic(url: string): Promise<ScrapeOutcome> {
+  let r: Response;
+  try {
+    r = await fetch(url, {
+      redirect: "follow",
+      headers: {
+        "User-Agent":
+          "Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/124.0 Safari/537.36",
+        "Accept":
+          "text/html,application/xhtml+xml,application/xml;q=0.9,image/avif,image/webp,*/*;q=0.8",
+        "Accept-Language": "pt-BR,pt;q=0.9,en;q=0.8",
+      },
+    });
+  } catch (e) {
+    return { content: "", status: 0, blocked: true, reason: `Falha de rede: ${(e as Error).message}` };
+  }
+
+  if (!r.ok) {
+    const blocked = [401, 403, 429, 503].includes(r.status);
+    return {
+      content: "",
+      status: r.status,
+      blocked,
+      reason: blocked
+        ? `O site bloqueou o acesso automatizado (HTTP ${r.status}).`
+        : `HTTP ${r.status} ao buscar a URL.`,
+    };
+  }
+
   const html = await r.text();
 
   const pick = (re: RegExp) => {
@@ -128,14 +152,12 @@ async function scrapeBasic(url: string): Promise<string> {
     || pick(/<meta[^>]+property=["']og:description["'][^>]+content=["']([^"']+)["']/i);
   const ogTitle = pick(/<meta[^>]+property=["']og:title["'][^>]+content=["']([^"']+)["']/i);
 
-  // Tenta extrair <main> ou <article>; cai para <body>
   const mainMatch =
     html.match(/<main[\s\S]*?<\/main>/i) ||
     html.match(/<article[\s\S]*?<\/article>/i) ||
     html.match(/<body[\s\S]*?<\/body>/i);
   const mainHtml = mainMatch ? mainMatch[0] : html;
 
-  // Cabeçalhos (h1-h3) preservados como pistas estruturais
   const headings = Array.from(mainHtml.matchAll(/<h([1-3])[^>]*>([\s\S]*?)<\/h\1>/gi))
     .map((m) => `H${m[1]}: ${m[2].replace(/<[^>]+>/g, " ").replace(/\s+/g, " ").trim()}`)
     .filter((s) => s.length > 4)
@@ -158,8 +180,19 @@ async function scrapeBasic(url: string): Promise<string> {
     (headings ? `## Estrutura da página\n${headings}\n\n` : "") +
     `## Conteúdo\n${body}`;
 
-  return composed.slice(0, 20000);
+  return { content: composed.slice(0, 20000), status: r.status, blocked: false };
 }
+
+// Heurística de qualidade do conteúdo raspado.
+function assessContentQuality(content: string): { ok: boolean; reason?: string; chars: number } {
+  const chars = content.trim().length;
+  if (chars < 300) return { ok: false, chars, reason: "Conteúdo muito curto (provável SPA ou bloqueio)." };
+  // Conteúdo sem nenhuma palavra com mais de 4 letras é suspeito
+  const words = content.match(/[A-Za-zÀ-ÿ]{4,}/g) ?? [];
+  if (words.length < 40) return { ok: false, chars, reason: "Conteúdo sem texto significativo." };
+  return { ok: true, chars };
+}
+
 
 async function researchWithPerplexity(
   pageContent: string,
