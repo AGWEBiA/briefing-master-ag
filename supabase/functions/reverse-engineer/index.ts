@@ -183,14 +183,92 @@ async function scrapeBasic(url: string): Promise<ScrapeOutcome> {
   return { content: composed.slice(0, 20000), status: r.status, blocked: false };
 }
 
-// Heurística de qualidade do conteúdo raspado.
-function assessContentQuality(content: string): { ok: boolean; reason?: string; chars: number } {
-  const chars = content.trim().length;
-  if (chars < 300) return { ok: false, chars, reason: "Conteúdo muito curto (provável SPA ou bloqueio)." };
-  // Conteúdo sem nenhuma palavra com mais de 4 letras é suspeito
-  const words = content.match(/[A-Za-zÀ-ÿ]{4,}/g) ?? [];
-  if (words.length < 40) return { ok: false, chars, reason: "Conteúdo sem texto significativo." };
-  return { ok: true, chars };
+// ===== Qualidade do conteúdo raspado =====
+// Devolve um score 0-100 + nível + recomendação de método alternativo.
+const QUALITY_MIN_OK = 60;     // abaixo disso, bloqueia o método e sugere alternativa
+const QUALITY_MIN_USABLE = 40; // abaixo disso, considera inutilizável
+
+interface QualityReport {
+  ok: boolean;             // score >= QUALITY_MIN_OK
+  usable: boolean;         // score >= QUALITY_MIN_USABLE
+  score: number;           // 0-100
+  level: "alta" | "média" | "baixa" | "insuficiente";
+  chars: number;
+  words: number;
+  reason?: string;
+  // Trechos representativos para exibir na UI
+  snippets: { head: string; middle: string; tail: string };
+}
+
+function assessContentQuality(content: string): QualityReport {
+  const trimmed = content.trim();
+  const chars = trimmed.length;
+  const wordMatches = trimmed.match(/[A-Za-zÀ-ÿ]{4,}/g) ?? [];
+  const words = wordMatches.length;
+
+  // Score por caracteres (até 60 pts) + por palavras significativas (até 40 pts)
+  const charScore = Math.min(60, Math.round((chars / 2000) * 60));
+  const wordScore = Math.min(40, Math.round((words / 250) * 40));
+  let score = charScore + wordScore;
+  if (chars < 100) score = Math.min(score, 10);
+  score = Math.max(0, Math.min(100, score));
+
+  let level: QualityReport["level"];
+  let reason: string | undefined;
+  if (score >= 75) level = "alta";
+  else if (score >= QUALITY_MIN_OK) level = "média";
+  else if (score >= QUALITY_MIN_USABLE) {
+    level = "baixa";
+    reason = `Conteúdo abaixo do recomendado (${chars} caracteres, ${words} palavras).`;
+  } else {
+    level = "insuficiente";
+    reason =
+      chars < 300
+        ? "Conteúdo muito curto (provável SPA ou bloqueio)."
+        : "Conteúdo sem texto significativo.";
+  }
+
+  // Trechos: começo, meio e fim, sem ultrapassar limites
+  const snip = (s: string) => s.replace(/\s+/g, " ").trim().slice(0, 280);
+  const mid = chars > 600 ? Math.floor(chars / 2) - 140 : 0;
+  const snippets = {
+    head: snip(trimmed.slice(0, 280)),
+    middle: chars > 600 ? snip(trimmed.slice(mid, mid + 280)) : "",
+    tail: chars > 1200 ? snip(trimmed.slice(-280)) : "",
+  };
+
+  return {
+    ok: score >= QUALITY_MIN_OK,
+    usable: score >= QUALITY_MIN_USABLE,
+    score,
+    level,
+    chars,
+    words,
+    reason,
+    snippets,
+  };
+}
+
+// Sugere o melhor método alternativo dadas as integrações disponíveis.
+function recommendNextMethod(opts: {
+  triedMethod: string;
+  hasFirecrawl: boolean;
+  hasPerplexity: boolean;
+  blocked: boolean;
+}): "firecrawl" | "perplexity" | "fetch" | null {
+  const { triedMethod, hasFirecrawl, hasPerplexity, blocked } = opts;
+  // Se site bloqueia bots, fetch direto não vai resolver — pular para Firecrawl/Perplexity
+  if (blocked) {
+    if (hasFirecrawl && triedMethod !== "firecrawl") return "firecrawl";
+    if (hasPerplexity) return "perplexity";
+    return null;
+  }
+  // Se conteúdo curto vindo de fetch, Firecrawl renderiza JS → melhor alternativa
+  if (triedMethod === "fetch" && hasFirecrawl) return "firecrawl";
+  // Se Firecrawl já tentou e falhou, ou não há Firecrawl, vai para Perplexity
+  if (hasPerplexity) return "perplexity";
+  if (hasFirecrawl && triedMethod !== "firecrawl") return "firecrawl";
+  return null;
 }
 
 
@@ -451,78 +529,109 @@ Deno.serve(async (req) => {
       if (!ok) await tryFetch();
     }
 
-    // Avaliação de qualidade
-    const quality = assessContentQuality(pageContent);
+    // Avaliação de qualidade do conteúdo já raspado
+    let quality = assessContentQuality(pageContent);
 
-    // Modo "inspect": devolve resultado da raspagem para o usuário decidir
-    if (mode === "inspect" || (mode === "auto" && !quality.ok && forceMethod !== "perplexity")) {
-      // Se em "auto" e qualidade ruim, ainda tenta perplexity automaticamente caso esteja conectada
-      if (mode === "auto" && byProvider.perplexity?.api_key) {
-        const ok = await tryPerplexity();
-        const q2 = assessContentQuality(pageContent);
-        if (ok && q2.ok) {
-          // segue normal
-        } else {
-          return new Response(
-            JSON.stringify({
-              needsChoice: true,
-              errorCode: scrapeBlocked ? "SITE_BLOCKED" : "WEAK_CONTENT",
-              message: scrapeBlocked
-                ? `O site bloqueou a leitura automatizada (HTTP ${scrapeStatus || "?"}). Você pode tentar novamente usando a Perplexity para resumir a página, ou colar outro link.`
-                : `O conteúdo extraído ficou muito curto (${quality.chars} caracteres) — pode ser uma SPA, um site protegido ou uma página vazia.`,
-              quality,
-              scrapeMethod,
-              scrapeStatus,
-              preview: pageContent.slice(0, 600),
-              hasPerplexity: !!byProvider.perplexity?.api_key,
-              hasFirecrawl: !!byProvider.firecrawl?.api_key,
-              suggestions: [
-                ...(byProvider.perplexity?.api_key
-                  ? [{ id: "retry-perplexity", label: "Tentar com Perplexity (resumo da web)" }]
-                  : [{ id: "connect-perplexity", label: "Conectar Perplexity em Integrações" }]),
-                { id: "change-url", label: "Usar outro link" },
-              ],
-            }),
-            { status: 200, headers: { ...corsHeaders, "Content-Type": "application/json" } },
-          );
-        }
-      } else if (mode === "inspect") {
-        // só inspeção: nunca chama LLM
+    // Helper para montar o payload de "needsChoice" com prévia rica + recomendação
+    const buildChoicePayload = (extra?: Partial<Record<string, unknown>>) => {
+      const hasFirecrawl = !!byProvider.firecrawl?.api_key;
+      const hasPerplexity = !!byProvider.perplexity?.api_key;
+      const recommended = recommendNextMethod({
+        triedMethod: scrapeMethod,
+        hasFirecrawl,
+        hasPerplexity,
+        blocked: scrapeBlocked,
+      });
+
+      // Bloqueio automático: método que claramente não vai funcionar fica desabilitado
+      const methods = {
+        fetch: {
+          available: true,
+          disabled: scrapeBlocked && scrapeMethod === "fetch",
+          reason: scrapeBlocked && scrapeMethod === "fetch"
+            ? `Bloqueado pelo site (HTTP ${scrapeStatus || "?"})`
+            : undefined,
+        },
+        firecrawl: {
+          available: hasFirecrawl,
+          disabled: false,
+          reason: hasFirecrawl ? undefined : "Conecte Firecrawl em Integrações",
+        },
+        perplexity: {
+          available: hasPerplexity,
+          disabled: false,
+          reason: hasPerplexity ? undefined : "Conecte Perplexity em Integrações",
+        },
+      };
+
+      return {
+        needsChoice: true,
+        errorCode: scrapeBlocked ? "SITE_BLOCKED" : "WEAK_CONTENT",
+        message: scrapeBlocked
+          ? `O site bloqueou a leitura automatizada${scrapeStatus ? ` (HTTP ${scrapeStatus})` : ""}. ${
+              recommended === "perplexity"
+                ? "Recomendamos pesquisar o nicho via Perplexity."
+                : recommended === "firecrawl"
+                ? "Recomendamos extrair com Firecrawl (renderiza JS)."
+                : "Conecte Firecrawl ou Perplexity para contornar."
+            }`
+          : `Conteúdo extraído tem qualidade ${quality.level} (${quality.score}/100, ${quality.chars} caracteres, ${quality.words} palavras). ${
+              recommended === "firecrawl"
+                ? "Recomendamos Firecrawl — renderiza JavaScript e funciona melhor em SPAs."
+                : recommended === "perplexity"
+                ? "Recomendamos Perplexity — pesquisa o nicho mesmo sem ler a página."
+                : "Conecte Firecrawl ou Perplexity para tentar uma extração melhor."
+            }`,
+        quality,
+        scrapeMethod,
+        scrapeStatus,
+        preview: {
+          length: pageContent.length,
+          chars: quality.chars,
+          words: quality.words,
+          score: quality.score,
+          level: quality.level,
+          head: quality.snippets.head,
+          middle: quality.snippets.middle,
+          tail: quality.snippets.tail,
+        },
+        recommended,
+        methods,
+        hasPerplexity,
+        hasFirecrawl,
+        ...(extra ?? {}),
+      };
+    };
+
+    // Modo "inspect": só raspa e devolve métricas — nunca chama LLM
+    if (mode === "inspect") {
+      return new Response(
+        JSON.stringify({
+          inspected: true,
+          ...buildChoicePayload({ needsChoice: !quality.ok }),
+        }),
+        { status: 200, headers: { ...corsHeaders, "Content-Type": "application/json" } },
+      );
+    }
+
+    // Modo "auto" e qualidade ruim: tenta cascata automática (Firecrawl → Perplexity)
+    // sem precisar de novo clique do usuário.
+    if (mode === "auto" && !quality.ok && forceMethod !== "perplexity") {
+      // 1ª tentativa automática: Firecrawl, se conectado e ainda não usado
+      if (byProvider.firecrawl?.api_key && (scrapeMethod as string) !== "firecrawl") {
+        await tryFirecrawl();
+        quality = assessContentQuality(pageContent);
+      }
+      // 2ª tentativa automática: Perplexity, se conectada
+      if (!quality.ok && byProvider.perplexity?.api_key) {
+        await tryPerplexity();
+        quality = assessContentQuality(pageContent);
+      }
+
+      // Se ainda assim não atingiu qualidade mínima utilizável, devolve prévia + recomendação
+      if (!quality.usable) {
         return new Response(
-          JSON.stringify({
-            inspected: true,
-            ok: quality.ok,
-            quality,
-            scrapeMethod,
-            scrapeStatus,
-            scrapeBlocked,
-            scrapeReason,
-            preview: pageContent.slice(0, 600),
-            hasPerplexity: !!byProvider.perplexity?.api_key,
-            hasFirecrawl: !!byProvider.firecrawl?.api_key,
-          }),
-          { status: 200, headers: { ...corsHeaders, "Content-Type": "application/json" } },
-        );
-      } else {
-        // Auto sem perplexity disponível e qualidade ruim → erro com sugestões
-        return new Response(
-          JSON.stringify({
-            needsChoice: true,
-            errorCode: scrapeBlocked ? "SITE_BLOCKED" : "WEAK_CONTENT",
-            message: scrapeBlocked
-              ? `O site bloqueou a leitura automatizada (HTTP ${scrapeStatus || "?"}). Conecte Perplexity em Integrações para contornar, ou tente outro link.`
-              : `O conteúdo extraído ficou muito curto (${quality.chars} caracteres). Conecte Perplexity em Integrações ou tente outro link.`,
-            quality,
-            scrapeMethod,
-            scrapeStatus,
-            preview: pageContent.slice(0, 600),
-            hasPerplexity: false,
-            hasFirecrawl: !!byProvider.firecrawl?.api_key,
-            suggestions: [
-              { id: "connect-perplexity", label: "Conectar Perplexity em Integrações" },
-              { id: "change-url", label: "Usar outro link" },
-            ],
-          }),
+          JSON.stringify(buildChoicePayload()),
           { status: 200, headers: { ...corsHeaders, "Content-Type": "application/json" } },
         );
       }
