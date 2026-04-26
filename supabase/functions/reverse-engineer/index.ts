@@ -618,7 +618,7 @@ Deno.serve(async (req) => {
     // sem precisar de novo clique do usuário.
     if (mode === "auto" && !quality.ok && forceMethod !== "perplexity") {
       // 1ª tentativa automática: Firecrawl, se conectado e ainda não usado
-      if (byProvider.firecrawl?.api_key && scrapeMethod !== "firecrawl") {
+      if (byProvider.firecrawl?.api_key && (scrapeMethod as string) !== "firecrawl") {
         await tryFirecrawl();
         quality = assessContentQuality(pageContent);
       }
