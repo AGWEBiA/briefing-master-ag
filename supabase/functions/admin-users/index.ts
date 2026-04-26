@@ -47,6 +47,23 @@ Deno.serve(async (req) => {
     const body = await req.json().catch(() => ({}));
     const action = String(body.action ?? "");
 
+    // Helper: verifica se email já existe (case-insensitive)
+    const emailExists = async (email: string): Promise<boolean> => {
+      const target = email.trim().toLowerCase();
+      if (!target) return false;
+      // listUsers paginado — varre até encontrar
+      let page = 1;
+      const perPage = 200;
+      while (true) {
+        const { data, error } = await admin.auth.admin.listUsers({ page, perPage });
+        if (error) return false;
+        if (data.users.some((u) => (u.email ?? "").toLowerCase() === target)) return true;
+        if (data.users.length < perPage) return false;
+        page += 1;
+        if (page > 25) return false; // segurança: até 5000 usuários
+      }
+    };
+
     if (action === "list") {
       const { data: list, error: lerr } = await admin.auth.admin.listUsers({
         page: 1,
