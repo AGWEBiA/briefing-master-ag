@@ -182,24 +182,56 @@ export function ExportPreviewDialog({
               )}
             </TabsContent>
 
-            {/* DOC — renderiza o HTML em uma "página A4" simulada */}
-            <TabsContent value="doc" className="h-full m-0 data-[state=inactive]:hidden">
-              <ScrollArea className="h-full">
-                <div className="mx-auto my-6 max-w-[820px] px-4">
-                  <div className="bg-white text-foreground shadow-elevated rounded-md overflow-hidden">
-                    {/* Aplicamos o HTML completo do export — o iframe isolado evita conflito de CSS */}
-                    <iframe
-                      title="Pré-visualização Word"
-                      srcDoc={docHtml}
-                      className="w-full border-0"
-                      style={{ height: "1200px" }}
-                    />
-                  </div>
-                  <p className="text-center text-xs text-muted-foreground mt-3">
-                    O arquivo .doc abre no Word/Google Docs respeitando as mesmas quebras de página exibidas acima.
-                  </p>
+            {/* DOC — alterna entre A4 paginado e responsivo */}
+            <TabsContent value="doc" className="h-full m-0 data-[state=inactive]:hidden flex flex-col">
+              <div className="flex items-center justify-between gap-3 px-4 py-2 border-b bg-background flex-wrap">
+                <div className="flex items-center gap-1 rounded-md border bg-muted/40 p-0.5">
+                  <Button
+                    variant={docLayout === "a4" ? "default" : "ghost"}
+                    size="sm"
+                    className="h-7 px-3 text-xs"
+                    onClick={() => setDocLayout("a4")}
+                  >
+                    <FileStack className="mr-1.5 h-3.5 w-3.5" />
+                    1 página A4
+                  </Button>
+                  <Button
+                    variant={docLayout === "responsive" ? "default" : "ghost"}
+                    size="sm"
+                    className="h-7 px-3 text-xs"
+                    onClick={() => setDocLayout("responsive")}
+                  >
+                    <Monitor className="mr-1.5 h-3.5 w-3.5" />
+                    Responsivo
+                  </Button>
                 </div>
-              </ScrollArea>
+                <p className="text-xs text-muted-foreground">
+                  {docLayout === "a4"
+                    ? "Cada página A4 (21×29,7cm) aparece separada por marcadores de quebra."
+                    : "Layout fluido sem páginas fixas — útil para revisar o conteúdo corrido."}
+                </p>
+              </div>
+              <div className={`flex-1 min-h-0 ${docLayout === "a4" ? "bg-muted/40" : "bg-background"}`}>
+                <ScrollArea className="h-full">
+                  <div className={docLayout === "a4" ? "py-6" : ""}>
+                    <iframe
+                      ref={docIframeRef}
+                      title="Pré-visualização Word"
+                      srcDoc={docPreviewSrc}
+                      onLoad={handleIframeLoad}
+                      className="border-0 block mx-auto bg-white"
+                      style={{
+                        width: docLayout === "a4" ? "calc(21cm + 24px)" : "100%",
+                        maxWidth: "100%",
+                        height: `${docHeight}px`,
+                      }}
+                    />
+                    <p className="text-center text-xs text-muted-foreground mt-3 px-4">
+                      O arquivo .doc abre no Word/Google Docs respeitando as quebras de página da visualização A4.
+                    </p>
+                  </div>
+                </ScrollArea>
+              </div>
             </TabsContent>
 
             {/* Markdown — preview renderizado + código fonte lado a lado */}
