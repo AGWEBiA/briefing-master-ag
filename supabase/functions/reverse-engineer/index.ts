@@ -35,14 +35,14 @@ const FIELD_DESCRIPTIONS: Record<string, string> = {
   nivelConsciencia: "Uma destas: Inconsciente | Consciente do problema | Consciente da solução | Consciente do produto | Mais consciente.",
   canaisOnline: "Canais online onde o avatar está (ex.: Instagram, YouTube).",
   empatiaResumo: "Síntese curta do mapa da empatia do avatar.",
-  // Mapa da empatia
-  // Mapa da empatia (preencha cada quadrante com no mínimo 3-4 frases concretas)
-  me_pensaSente: "PENSA E SENTE — mundo interior do avatar: preocupações reais, sonhos, aspirações, crenças limitantes, sentimentos que ele NÃO admite em voz alta. Mínimo 3 frases concretas. Não use generalidades.",
-  me_ve: "VÊ — ambiente visual: o que o avatar enxerga no mercado e ao redor (concorrentes faturando, anúncios, estilo de vida de amigos, ofertas a que está exposto). Mínimo 3 itens concretos.",
-  me_ouve: "OUVE — vozes que influenciam: o que dizem família, amigos, chefe, parceiro, gurus, podcasts, comunidades. Cite os tipos de fontes e o teor (apoio, pressão, ruído). Mínimo 3 fontes.",
-  me_falaFaz: "FALA E FAZ — comportamento público vs. privado: o que posta, o que consome, hábitos diários, contradições entre o que diz e o que faz. Mínimo 3 comportamentos específicos.",
-  me_dores: "DORES — medos concretos, frustrações recorrentes, obstáculos reais (tempo, dinheiro, conhecimento, suporte) e riscos percebidos ao tomar a decisão de compra. Mínimo 4 itens.",
-  me_ganhos: "GANHOS — desejos profundos + métricas concretas de sucesso (números, prazos, status). Inclua ganhos tangíveis (dinheiro, tempo) e intangíveis (orgulho, reconhecimento). Mínimo 4 itens.",
+  // Mapa da empatia (Xplane/Dave Gray) — 6 quadrantes canônicos.
+  // Cada quadrante deve trazer 3-4 itens concretos respondendo às perguntas-guia clássicas.
+  me_ve: "VÊ — estímulos visuais do cotidiano. Responder: Como é o mundo em que vive? Como são seus amigos? O que enxerga concorrentes oferecendo? Que conteúdos consome (TV, redes, sites, podcasts)? Que ofertas aparecem na frente dele? Mínimo 3 itens concretos do ambiente pessoal E profissional.",
+  me_ouve: "OUVE — vozes e influências (não só som). Responder: Quem o influencia (família, amigos, chefe, ídolos, líderes religiosos)? Quais marcas favoritas? Quais produtos de comunicação consome (podcasts, canais, comunidades)? Indique o teor: apoio, pressão ou ruído. Mínimo 3 fontes diferentes.",
+  me_pensaSente: "PENSA E SENTE — mundo interior. Responder: Como se sente em relação ao mundo? Quais suas preocupações reais? Quais seus sonhos e aspirações? Que crenças limitantes carrega? Inclua sentimentos que NÃO admite em voz alta. Mínimo 3 frases concretas, sem generalidades.",
+  me_falaFaz: "FALA E FAZ — atitude pública e comportamento (discurso x prática). Responder: Sobre o que costuma falar? Como age no dia a dia? Como se veste/se apresenta? Quais hobbies? Onde há contradição entre o que diz e o que faz? Mínimo 3 comportamentos específicos.",
+  me_dores: "DORES — dúvidas e obstáculos para consumir a solução. Responder: Do que tem medo? Quais maiores frustrações hoje? Que obstáculos precisa superar (tempo, dinheiro, conhecimento, suporte, autoestima)? Que riscos percebe na decisão de compra? Mínimo 4 itens concretos.",
+  me_ganhos: "GANHOS / NECESSIDADES — critérios de sucesso. Responder: O que é sucesso para ele? Onde quer chegar? O que acabaria com seus problemas? Inclua ganhos tangíveis (dinheiro, tempo, métricas com prazo) e intangíveis (orgulho, status, reconhecimento). Mínimo 4 itens.",
   // Posicionamento
   nomeExpert: "Nome do expert/produtor.",
   audienciaAtual: "Tamanho/origem da audiência atual.",
@@ -292,7 +292,13 @@ async function researchWithPerplexity(
     `6. NÍVEL DE CONSCIÊNCIA dominante (escala de Eugene Schwartz: inconsciente → consciente do problema → da solução → do produto → mais consciente).\n` +
     `7. CANAIS ONLINE — onde esse público se concentra (redes sociais, comunidades, podcasts, fóruns), com exemplos verificáveis.\n` +
     `8. CONCORRENTES diretos no mesmo subnicho — 2 a 5 nomes verificáveis, com posicionamento e diferenciais.\n` +
-    `9. MAPA DA EMPATIA do avatar — preencha os 6 quadrantes (PENSA E SENTE / VÊ / OUVE / FALA E FAZ / DORES / GANHOS) baseando-se EXCLUSIVAMENTE no que foi pesquisado.\n\n` +
+    `9. MAPA DA EMPATIA do avatar (modelo Xplane/Dave Gray) — preencha os 6 quadrantes nesta ordem e respondendo às perguntas-guia clássicas, baseando-se EXCLUSIVAMENTE no que foi pesquisado:\n` +
+    `   • VÊ: Como é o mundo dele? Como são os amigos? O que vê concorrentes oferecendo? Que conteúdos consome?\n` +
+    `   • OUVE: Quem o influencia (família, amigos, ídolos)? Marcas favoritas? Podcasts/canais/comunidades que consome?\n` +
+    `   • PENSA E SENTE: Como se sente em relação ao mundo? Preocupações reais? Sonhos? Crenças limitantes?\n` +
+    `   • FALA E FAZ: Sobre o que costuma falar? Como age? Hobbies? Contradições entre discurso e prática?\n` +
+    `   • DORES: Do que tem medo? Frustrações? Obstáculos para consumir a solução? Riscos percebidos?\n` +
+    `   • GANHOS / NECESSIDADES: O que é sucesso para ele? Onde quer chegar? O que acabaria com seus problemas?\n\n` +
     `=== REGRAS RÍGIDAS ANTI-ALUCINAÇÃO ===\n` +
     `- NUNCA invente nomes próprios, depoimentos, números, percentuais, datas, preços ou estatísticas.\n` +
     `- Se uma informação não estiver claramente em uma fonte pública, escreva literalmente "não verificado" naquele item.\n` +
@@ -697,7 +703,15 @@ Deno.serve(async (req) => {
       "3. Quando uma informação não estiver disponível ou for ambígua, deixe o campo como string vazia (\"\") em vez de adivinhar.\n" +
       "4. Para dores, desejos, objeções e mapa da empatia, baseie-se no público-alvo e subnicho identificados na pesquisa externa; se não houver pesquisa, infira de forma CONSERVADORA e GENÉRICA, sem citar dados específicos.\n" +
       "5. Diferencie claramente o que é FATO (extraído da página/pesquisa) do que é INFERÊNCIA conservadora — em caso de dúvida, prefira deixar vazio.\n" +
-      "6. Use português do Brasil. Para listas (módulos, bônus), separe itens por quebra de linha.\n" +
+      "6. Use português do Brasil. Para listas (módulos, bônus), separe itens por quebra de linha.\n\n" +
+      "MAPA DA EMPATIA (campos me_*) — siga o método canônico Xplane/Dave Gray:\n" +
+      "• me_ve (VÊ): estímulos visuais do cotidiano — mundo, amigos, concorrentes, conteúdos consumidos, ofertas. ≥3 itens concretos.\n" +
+      "• me_ouve (OUVE): vozes/influências — família, amigos, ídolos, marcas favoritas, podcasts/canais/comunidades; indique apoio, pressão ou ruído. ≥3 fontes.\n" +
+      "• me_pensaSente (PENSA E SENTE): mundo interior — sentimentos sobre o mundo, preocupações reais, sonhos, crenças limitantes, o que NÃO admite em voz alta. ≥3 frases concretas.\n" +
+      "• me_falaFaz (FALA E FAZ): atitude pública — discurso x prática, hábitos, hobbies, contradições. ≥3 comportamentos específicos.\n" +
+      "• me_dores (DORES): medos, frustrações, obstáculos (tempo/dinheiro/conhecimento/suporte) e riscos percebidos para comprar. ≥4 itens.\n" +
+      "• me_ganhos (GANHOS/NECESSIDADES): critérios de sucesso — onde quer chegar, o que acabaria com problemas; tangíveis (dinheiro, tempo, métricas) + intangíveis (orgulho, status). ≥4 itens.\n" +
+      "Evite generalidades vazias do tipo 'quer ter sucesso' ou 'quer ser feliz'. Cada item deve ser específico do nicho/avatar identificado.\n\n" +
       "7. Devolva SEMPRE chamando a tool fill_briefing.";
 
     const userPrompt =
@@ -710,7 +724,7 @@ Deno.serve(async (req) => {
             : "")
         : "") +
       `=== INSTRUÇÕES ===\n` +
-      `Preencha os campos do briefing usando a tool 'fill_briefing'. Inclua o Mapa da Empatia (me_*) baseado no avatar identificado na pesquisa. ` +
+      `Preencha os campos do briefing usando a tool 'fill_briefing'. Inclua o Mapa da Empatia (me_*) seguindo o método Xplane/Dave Gray descrito no system prompt, baseado no avatar identificado na pesquisa. ` +
       `Lembre-se: deixe vazio (\"\") qualquer campo cuja informação não esteja claramente suportada pelas fontes — não invente.`;
 
     const filled = await callLLMWithTool({
