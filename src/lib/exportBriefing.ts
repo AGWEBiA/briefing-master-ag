@@ -1,19 +1,27 @@
 import { jsPDF } from "jspdf";
 import { FIXED_SECTIONS, getStrategy, type Section } from "./briefingSchema";
 
+// ============================================================
+// DESIGN TOKENS (consistentes em PDF / DOC / MD)
+// ============================================================
+const PALETTE = {
+  ink: [17, 24, 39] as [number, number, number],          // #111827
+  body: [55, 65, 81] as [number, number, number],         // #374151
+  muted: [107, 114, 128] as [number, number, number],     // #6B7280
+  faint: [156, 163, 175] as [number, number, number],     // #9CA3AF
+  rule: [229, 231, 235] as [number, number, number],      // #E5E7EB
+  cardBg: [249, 250, 251] as [number, number, number],    // #F9FAFB
+  cardBorder: [229, 231, 235] as [number, number, number],
+  brand: [37, 99, 235] as [number, number, number],       // #2563EB
+  brandSoft: [219, 234, 254] as [number, number, number], // #DBEAFE
+  warn: [217, 119, 6] as [number, number, number],        // #D97706
+  ok: [22, 163, 74] as [number, number, number],          // #16A34A
+};
+
 const NA = "_Não preenchido_";
 const v = (data: Record<string, string>, id: string) => {
   const val = (data[id] ?? "").trim();
   return val.length ? val : NA;
-};
-
-const tableRows = (data: Record<string, string>, ids: [string, string][]) =>
-  ids.map(([id, label]) => `| ${label} | ${v(data, id)} |`).join("\n");
-
-const sectionTable = (data: Record<string, string>, section: Section) => {
-  const fields = section.groups.flatMap((g) => g.fields ?? []);
-  const rows = fields.map((f) => [f.id, f.label] as [string, string]);
-  return `| Campo | Valor |\n|---|---|\n${tableRows(data, rows)}`;
 };
 
 const slugify = (s: string) =>
@@ -27,9 +35,36 @@ const baseFilename = (data: Record<string, string>, strategyId?: string | null) 
   return `briefing-${slug || "produto"}-${stratSlug}`;
 };
 
+// Conta itens preenchidos para exibir nível de completude
+function computeCompleteness(data: Record<string, string>, strat: ReturnType<typeof getStrategy>) {
+  const allSections: Section[] = [
+    ...FIXED_SECTIONS,
+    ...(strat?.sections ?? []),
+  ];
+  const fields = allSections.flatMap((s) => s.groups.flatMap((g) => g.fields ?? []));
+  const filled = fields.filter((f) => (data[f.id] ?? "").trim().length > 0).length;
+  return { filled, total: fields.length, pct: fields.length ? Math.round((filled / fields.length) * 100) : 0 };
+}
+
+function listItems(value: string): string[] {
+  return (value ?? "")
+    .split(/\n|,(?![^()]*\))/)
+    .map((s) => s.trim())
+    .filter(Boolean);
+}
+
 // ============================================================
-// MARKDOWN
+// MARKDOWN — capa, sumário, blocos com hierarquia clara
 // ============================================================
+const tableRows = (data: Record<string, string>, ids: [string, string][]) =>
+  ids.map(([id, label]) => `| **${label}** | ${v(data, id)} |`).join("\n");
+
+const sectionTable = (data: Record<string, string>, section: Section) => {
+  const fields = section.groups.flatMap((g) => g.fields ?? []);
+  const rows = fields.map((f) => [f.id, f.label] as [string, string]);
+  return `| Campo | Valor |\n|---|---|\n${tableRows(data, rows)}`;
+};
+
 export function exportBriefingMarkdown(
   data: Record<string, string>,
   strategyId?: string | null,
@@ -37,75 +72,116 @@ export function exportBriefingMarkdown(
   const strat = getStrategy(strategyId);
   const filename = `${baseFilename(data, strategyId)}.md`;
   const now = new Date().toLocaleString("pt-BR");
+  const completeness = computeCompleteness(data, strat);
 
-  const blocks: string[] = [];
-  blocks.push(`# Briefing Universal de Produto — ${data.nomeProduto || "(sem nome)"}`);
-  blocks.push(
-    `**Estratégia:** ${strat ? `${strat.emoji} ${strat.name}` : "_Não selecionada_"}  \n` +
-    `**Gerado em:** ${now}`,
+  const out: string[] = [];
+
+  // ── Capa
+  out.push(
+    `<div align="center">\n\n` +
+    `# 📘 Briefing Universal de Produto\n\n` +
+    `### ${data.nomeProduto || "(sem nome)"}\n\n` +
+    `${strat ? `**Estratégia:** ${strat.emoji} ${strat.name}` : "_Estratégia não selecionada_"}\n\n` +
+    `\`Gerado em ${now}\` · \`Completude ${completeness.pct}% (${completeness.filled}/${completeness.total})\`\n\n` +
+    `</div>\n\n---`,
   );
 
+  // ── Sumário
+  out.push(`## 📑 Sumário\n`);
   const blockLetters = ["A", "B", "C", "D", "E", "F"];
   FIXED_SECTIONS.forEach((s, i) => {
-    blocks.push(`## BLOCO ${blockLetters[i] ?? `${i + 1}`} — ${s.title}`);
-    if (s.id === "avatar") {
-      blocks.push(`**Descrição do Avatar:**\n\n${v(data, "descricaoAvatar")}`);
-      blocks.push(`**Dores:**\n1. ${v(data, "dor1")}\n2. ${v(data, "dor2")}\n3. ${v(data, "dor3")}`);
-      blocks.push(`**Desejos:**\n1. ${v(data, "desejo1")}\n2. ${v(data, "desejo2")}\n3. ${v(data, "desejo3")}`);
-      blocks.push(`**Objeções:**\n1. ${v(data, "objecao1")}\n2. ${v(data, "objecao2")}\n3. ${v(data, "objecao3")}`);
-      blocks.push(
-        `| Campo | Valor |\n|---|---|\n` +
-        `| Nível de Consciência | ${v(data, "nivelConsciencia")} |\n` +
-        `| Canais Online | ${v(data, "canaisOnline")} |\n` +
-        `| Resumo do Mapa da Empatia | ${v(data, "empatiaResumo")} |`,
-      );
-    } else if (s.id === "mapaEmpatia") {
-      blocks.push(
-        `| Quadrante | Conteúdo |\n|---|---|\n` +
-        `| 🧠 O que pensa e sente | ${v(data, "me_pensaSente")} |\n` +
-        `| 👀 O que vê | ${v(data, "me_ve")} |\n` +
-        `| 👂 O que ouve | ${v(data, "me_ouve")} |\n` +
-        `| 💬 O que fala e faz | ${v(data, "me_falaFaz")} |\n` +
-        `| 😣 Dores | ${v(data, "me_dores")} |\n` +
-        `| 🏆 Ganhos | ${v(data, "me_ganhos")} |`,
-      );
-    } else {
-      blocks.push(sectionTable(data, s));
-    }
+    out.push(`- **Bloco ${blockLetters[i] ?? i + 1}** — [${s.title}](#bloco-${blockLetters[i].toLowerCase()}-${slugify(s.title)})`);
   });
-
   if (strat) {
-    blocks.push(`## ${strat.emoji} ${strat.name.toUpperCase()} — Detalhamento`);
-    strat.sections.forEach((s) => {
-      blocks.push(`### ${s.title}`);
-      blocks.push(sectionTable(data, s));
-    });
+    out.push(`- **Estratégia ${strat.emoji}** — [${strat.name}](#${slugify(strat.name)}-detalhamento)`);
+  }
+  out.push(`\n---`);
+
+  // ── Resumo Executivo
+  const resumo: string[] = [];
+  if (data.nicho) resumo.push(`- **Nicho:** ${data.nicho}`);
+  if (data.transformacaoPrincipal) resumo.push(`- **Transformação prometida:** ${data.transformacaoPrincipal}`);
+  if (data.precoProduto) resumo.push(`- **Preço:** ${data.precoProduto}`);
+  if (data.descricaoAvatar) resumo.push(`- **Avatar:** ${data.descricaoAvatar.split("\n")[0]}`);
+  if (resumo.length) {
+    out.push(`## ⭐ Resumo Executivo\n\n${resumo.join("\n")}\n\n---`);
   }
 
-  return { filename, content: blocks.join("\n\n") + "\n" };
+  // ── Blocos fixos
+  FIXED_SECTIONS.forEach((s, i) => {
+    const letter = blockLetters[i] ?? `${i + 1}`;
+    out.push(`## Bloco ${letter} — ${s.title}`);
+
+    if (s.id === "avatar") {
+      out.push(`> **Descrição do Avatar**\n>\n> ${(data.descricaoAvatar ?? "").trim() || "_Não preenchido_"}`);
+      const numbered = (label: string, ids: string[]) =>
+        `**${label}**\n\n` + ids.map((id, idx) => `${idx + 1}. ${v(data, id)}`).join("\n");
+      out.push(numbered("😣 Dores", ["dor1", "dor2", "dor3"]));
+      out.push(numbered("🎯 Desejos", ["desejo1", "desejo2", "desejo3"]));
+      out.push(numbered("🛡 Objeções", ["objecao1", "objecao2", "objecao3"]));
+      out.push(
+        `| Campo | Valor |\n|---|---|\n` +
+        `| **Nível de Consciência** | ${v(data, "nivelConsciencia")} |\n` +
+        `| **Canais Online** | ${v(data, "canaisOnline")} |\n` +
+        `| **Resumo do Mapa da Empatia** | ${v(data, "empatiaResumo")} |`,
+      );
+    } else if (s.id === "mapaEmpatia") {
+      // Grade 3x2 em markdown
+      out.push(
+        `| 🧠 Pensa & Sente | 👀 Vê | 👂 Ouve |\n|---|---|---|\n` +
+        `| ${v(data, "me_pensaSente")} | ${v(data, "me_ve")} | ${v(data, "me_ouve")} |\n\n` +
+        `| 💬 Fala & Faz | 😣 Dores | 🏆 Ganhos |\n|---|---|---|\n` +
+        `| ${v(data, "me_falaFaz")} | ${v(data, "me_dores")} | ${v(data, "me_ganhos")} |`,
+      );
+    } else {
+      out.push(sectionTable(data, s));
+    }
+    out.push(`---`);
+  });
+
+  // ── Estratégia
+  if (strat) {
+    out.push(`## ${strat.emoji} ${strat.name} — Detalhamento`);
+    strat.sections.forEach((sec) => {
+      out.push(`### ${sec.title}`);
+      out.push(sectionTable(data, sec));
+    });
+    out.push(`---`);
+  }
+
+  out.push(
+    `<div align="center">\n\n` +
+    `_Documento gerado automaticamente pelo **Briefing Master AG**._\n\n` +
+    `</div>\n`,
+  );
+
+  return { filename, content: out.join("\n\n") };
 }
 
 // ============================================================
-// HTML (base para DOCX e PDF)
+// HTML para DOCX (estilos inline + Word-friendly)
 // ============================================================
 const escapeHtml = (s: string) =>
   s.replace(/&/g, "&amp;").replace(/</g, "&lt;").replace(/>/g, "&gt;");
 
+const filledOrEmpty = (raw: string) => {
+  const val = (raw ?? "").trim();
+  return val
+    ? escapeHtml(val).replace(/\n/g, "<br>")
+    : `<em style="color:#9CA3AF">Não preenchido</em>`;
+};
+
 const fieldRowsHtml = (data: Record<string, string>, rows: [string, string][]) =>
   rows
-    .map(
-      ([id, label]) => {
-        const val = (data[id] ?? "").trim();
-        const display = val ? escapeHtml(val).replace(/\n/g, "<br>") : `<em style="color:#888">Não preenchido</em>`;
-        return `<tr><th>${escapeHtml(label)}</th><td>${display}</td></tr>`;
-      },
+    .map(([id, label]) =>
+      `<tr><th>${escapeHtml(label)}</th><td>${filledOrEmpty(data[id] ?? "")}</td></tr>`,
     )
     .join("");
 
 const sectionTableHtml = (data: Record<string, string>, section: Section) => {
   const fields = section.groups.flatMap((g) => g.fields ?? []);
   const rows = fields.map((f) => [f.id, f.label] as [string, string]);
-  return `<table>${fieldRowsHtml(data, rows)}</table>`;
+  return `<table class="kv">${fieldRowsHtml(data, rows)}</table>`;
 };
 
 function buildBriefingHtml(
@@ -115,64 +191,175 @@ function buildBriefingHtml(
   const strat = getStrategy(strategyId);
   const now = new Date().toLocaleString("pt-BR");
   const title = data.nomeProduto || "(sem nome)";
+  const completeness = computeCompleteness(data, strat);
 
   const styles = `
-    body { font-family: -apple-system, Segoe UI, Roboto, sans-serif; color: #1a1a1a; line-height: 1.5; }
-    h1 { font-size: 22pt; margin: 0 0 4pt; color: #1f2937; }
-    h2 { font-size: 14pt; margin: 18pt 0 6pt; color: #1f2937; border-bottom: 1.5pt solid #e5e7eb; padding-bottom: 3pt; }
-    h3 { font-size: 12pt; margin: 12pt 0 4pt; color: #374151; }
-    .meta { color: #6b7280; font-size: 10pt; margin-bottom: 14pt; }
-    table { border-collapse: collapse; width: 100%; margin: 6pt 0 10pt; font-size: 10pt; }
-    th, td { border: 0.5pt solid #d1d5db; padding: 5pt 8pt; vertical-align: top; text-align: left; }
-    th { background: #f3f4f6; width: 28%; font-weight: 600; }
-    .quad { display: table; width: 100%; }
-    .quad th { background: #eef2ff; }
-    ol { margin: 4pt 0 8pt 18pt; padding: 0; }
-    p { margin: 4pt 0; }
+    @page { size: A4; margin: 2cm 1.8cm; }
+    body { font-family: 'Segoe UI', -apple-system, Roboto, Helvetica, Arial, sans-serif; color: #111827; line-height: 1.55; font-size: 10.5pt; }
+
+    /* Capa */
+    .cover { text-align: center; padding: 60pt 0 80pt; page-break-after: always; }
+    .cover .eyebrow { color: #2563EB; font-size: 9pt; letter-spacing: 4pt; text-transform: uppercase; font-weight: 700; }
+    .cover h1 { font-size: 32pt; margin: 18pt 0 6pt; color: #111827; letter-spacing: -0.5pt; }
+    .cover .subtitle { font-size: 16pt; color: #374151; font-weight: 400; margin-bottom: 26pt; }
+    .cover .strategy-pill {
+      display: inline-block; background: #DBEAFE; color: #1E40AF; padding: 6pt 14pt;
+      border-radius: 999pt; font-size: 11pt; font-weight: 600;
+    }
+    .cover .meta {
+      margin-top: 32pt; color: #6B7280; font-size: 9.5pt;
+      border-top: 0.5pt solid #E5E7EB; padding-top: 14pt; display: inline-block;
+    }
+    .cover .pct {
+      margin-top: 18pt; font-size: 11pt; color: #111827;
+    }
+    .cover .bar {
+      width: 220pt; height: 6pt; background: #E5E7EB; border-radius: 999pt; margin: 6pt auto 0;
+    }
+    .cover .bar > span {
+      display: block; height: 6pt; background: #2563EB; border-radius: 999pt;
+    }
+
+    /* Sumário */
+    .toc { page-break-after: always; }
+    .toc h2 { font-size: 14pt; color: #111827; border-bottom: 1pt solid #E5E7EB; padding-bottom: 4pt; }
+    .toc ol { padding-left: 18pt; color: #374151; }
+    .toc li { margin: 4pt 0; }
+
+    /* Cabeçalhos de bloco */
+    .block { page-break-inside: avoid; margin-top: 24pt; }
+    .block-head {
+      display: flex; align-items: baseline; gap: 10pt;
+      border-bottom: 2pt solid #2563EB; padding-bottom: 6pt; margin-bottom: 12pt;
+    }
+    .block-letter {
+      background: #2563EB; color: #fff; font-weight: 700; font-size: 10pt;
+      padding: 3pt 8pt; border-radius: 4pt; letter-spacing: 1pt;
+    }
+    .block-title { font-size: 15pt; font-weight: 600; color: #111827; }
+
+    /* Tabelas */
+    table.kv { border-collapse: collapse; width: 100%; margin: 6pt 0 14pt; font-size: 10pt; }
+    table.kv th, table.kv td { border: 0.5pt solid #E5E7EB; padding: 7pt 10pt; vertical-align: top; text-align: left; }
+    table.kv th { background: #F9FAFB; width: 30%; font-weight: 600; color: #374151; }
+    table.kv td { color: #111827; }
+
+    /* Mapa da Empatia 3x2 */
+    table.empathy { border-collapse: separate; border-spacing: 6pt; width: 100%; margin: 6pt 0 14pt; }
+    table.empathy td {
+      width: 33.33%; vertical-align: top; padding: 10pt; border-radius: 6pt;
+      font-size: 9.5pt; line-height: 1.45;
+    }
+    .em-quad-title { font-size: 9pt; font-weight: 700; text-transform: uppercase; letter-spacing: 0.5pt; margin-bottom: 4pt; }
+    .em-pensa { background: #EEF2FF; border: 0.5pt solid #C7D2FE; }   .em-pensa  .em-quad-title { color: #4338CA; }
+    .em-ve    { background: #ECFDF5; border: 0.5pt solid #A7F3D0; }   .em-ve     .em-quad-title { color: #047857; }
+    .em-ouve  { background: #FFF7ED; border: 0.5pt solid #FED7AA; }   .em-ouve   .em-quad-title { color: #C2410C; }
+    .em-fala  { background: #F3F4F6; border: 0.5pt solid #D1D5DB; }   .em-fala   .em-quad-title { color: #374151; }
+    .em-dores { background: #FEF2F2; border: 0.5pt solid #FECACA; }   .em-dores  .em-quad-title { color: #B91C1C; }
+    .em-ganhos{ background: #EFF6FF; border: 0.5pt solid #BFDBFE; }   .em-ganhos .em-quad-title { color: #1D4ED8; }
+
+    /* Caixa de descrição */
+    .callout {
+      background: #F9FAFB; border-left: 3pt solid #2563EB; padding: 10pt 14pt;
+      margin: 8pt 0 14pt; font-size: 10.5pt; color: #111827;
+    }
+    .callout .label { font-size: 8.5pt; text-transform: uppercase; letter-spacing: 1pt; color: #2563EB; font-weight: 700; margin-bottom: 4pt; }
+
+    ol.numbered { margin: 6pt 0 14pt 0; padding-left: 22pt; }
+    ol.numbered li { margin: 3pt 0; padding-left: 4pt; }
+
+    h3.subhead { font-size: 11.5pt; color: #1E40AF; margin: 18pt 0 6pt; font-weight: 600; }
+
+    /* Estratégia */
+    .strategy-section { margin-top: 32pt; }
+    .strategy-section .block-letter { background: #16A34A; }
+    .strategy-section .block-head { border-bottom-color: #16A34A; }
   `;
 
   const blockLetters = ["A", "B", "C", "D", "E", "F"];
   const blocks: string[] = [];
 
+  // Resumo executivo (se houver dados)
+  const resumo: string[] = [];
+  if (data.nicho) resumo.push(`<strong>Nicho:</strong> ${escapeHtml(data.nicho)}`);
+  if (data.transformacaoPrincipal) resumo.push(`<strong>Transformação:</strong> ${escapeHtml(data.transformacaoPrincipal)}`);
+  if (data.precoProduto) resumo.push(`<strong>Preço:</strong> ${escapeHtml(data.precoProduto)}`);
+  if (resumo.length) {
+    blocks.push(
+      `<div class="callout"><div class="label">Resumo executivo</div>${resumo.join(" · ")}</div>`,
+    );
+  }
+
   FIXED_SECTIONS.forEach((s, i) => {
-    blocks.push(`<h2>BLOCO ${blockLetters[i] ?? `${i + 1}`} — ${escapeHtml(s.title)}</h2>`);
+    const letter = blockLetters[i] ?? `${i + 1}`;
+    blocks.push(`<section class="block">`);
+    blocks.push(
+      `<div class="block-head"><span class="block-letter">BLOCO ${letter}</span>` +
+      `<span class="block-title">${escapeHtml(s.title)}</span></div>`,
+    );
+
     if (s.id === "avatar") {
       const desc = (data.descricaoAvatar ?? "").trim();
-      blocks.push(`<p><strong>Descrição do Avatar:</strong><br>${desc ? escapeHtml(desc).replace(/\n/g, "<br>") : "<em>Não preenchido</em>"}</p>`);
-      const list = (label: string, ids: string[]) =>
-        `<p><strong>${label}:</strong></p><ol>${ids.map((id) => `<li>${escapeHtml((data[id] ?? "").trim() || "—")}</li>`).join("")}</ol>`;
-      blocks.push(list("Dores", ["dor1", "dor2", "dor3"]));
-      blocks.push(list("Desejos", ["desejo1", "desejo2", "desejo3"]));
-      blocks.push(list("Objeções", ["objecao1", "objecao2", "objecao3"]));
       blocks.push(
-        `<table>${fieldRowsHtml(data, [
+        `<div class="callout"><div class="label">Descrição do Avatar</div>` +
+        `${desc ? escapeHtml(desc).replace(/\n/g, "<br>") : "<em style='color:#9CA3AF'>Não preenchido</em>"}` +
+        `</div>`,
+      );
+      const list = (label: string, ids: string[]) =>
+        `<h3 class="subhead">${label}</h3><ol class="numbered">${ids
+          .map((id) => `<li>${filledOrEmpty(data[id] ?? "")}</li>`)
+          .join("")}</ol>`;
+      blocks.push(list("😣 Dores", ["dor1", "dor2", "dor3"]));
+      blocks.push(list("🎯 Desejos", ["desejo1", "desejo2", "desejo3"]));
+      blocks.push(list("🛡 Objeções", ["objecao1", "objecao2", "objecao3"]));
+      blocks.push(
+        `<table class="kv">${fieldRowsHtml(data, [
           ["nivelConsciencia", "Nível de Consciência"],
           ["canaisOnline", "Canais Online"],
           ["empatiaResumo", "Resumo do Mapa da Empatia"],
         ])}</table>`,
       );
     } else if (s.id === "mapaEmpatia") {
+      const cell = (cls: string, emoji: string, label: string, fid: string) =>
+        `<td class="${cls}"><div class="em-quad-title">${emoji} ${label}</div>${filledOrEmpty(data[fid] ?? "")}</td>`;
       blocks.push(
-        `<table class="quad">${fieldRowsHtml(data, [
-          ["me_pensaSente", "🧠 O que pensa e sente"],
-          ["me_ve", "👀 O que vê"],
-          ["me_ouve", "👂 O que ouve"],
-          ["me_falaFaz", "💬 O que fala e faz"],
-          ["me_dores", "😣 Dores"],
-          ["me_ganhos", "🏆 Ganhos"],
-        ])}</table>`,
+        `<table class="empathy"><tr>` +
+        cell("em-pensa", "🧠", "Pensa &amp; Sente", "me_pensaSente") +
+        cell("em-ve", "👀", "Vê", "me_ve") +
+        cell("em-ouve", "👂", "Ouve", "me_ouve") +
+        `</tr><tr>` +
+        cell("em-fala", "💬", "Fala &amp; Faz", "me_falaFaz") +
+        cell("em-dores", "😣", "Dores", "me_dores") +
+        cell("em-ganhos", "🏆", "Ganhos", "me_ganhos") +
+        `</tr></table>`,
       );
     } else {
       blocks.push(sectionTableHtml(data, s));
     }
+
+    blocks.push(`</section>`);
   });
 
   if (strat) {
-    blocks.push(`<h2>${escapeHtml(strat.emoji)} ${escapeHtml(strat.name.toUpperCase())} — Detalhamento</h2>`);
+    blocks.push(`<section class="block strategy-section">`);
+    blocks.push(
+      `<div class="block-head"><span class="block-letter">${escapeHtml(strat.emoji)} ESTRATÉGIA</span>` +
+      `<span class="block-title">${escapeHtml(strat.name)} — Detalhamento</span></div>`,
+    );
     strat.sections.forEach((sec) => {
-      blocks.push(`<h3>${escapeHtml(sec.title)}</h3>`);
+      blocks.push(`<h3 class="subhead">${escapeHtml(sec.title)}</h3>`);
       blocks.push(sectionTableHtml(data, sec));
     });
+    blocks.push(`</section>`);
+  }
+
+  // Sumário
+  const tocItems: string[] = [];
+  FIXED_SECTIONS.forEach((s, i) => {
+    tocItems.push(`<li><strong>Bloco ${blockLetters[i] ?? i + 1}</strong> — ${escapeHtml(s.title)}</li>`);
+  });
+  if (strat) {
+    tocItems.push(`<li><strong>Estratégia</strong> — ${escapeHtml(strat.emoji)} ${escapeHtml(strat.name)}</li>`);
   }
 
   return `<!DOCTYPE html>
@@ -183,25 +370,36 @@ function buildBriefingHtml(
 <style>${styles}</style>
 </head>
 <body>
-  <h1>Briefing Universal de Produto — ${escapeHtml(title)}</h1>
-  <div class="meta">
-    <strong>Estratégia:</strong> ${strat ? `${escapeHtml(strat.emoji)} ${escapeHtml(strat.name)}` : "<em>Não selecionada</em>"}<br>
-    <strong>Gerado em:</strong> ${escapeHtml(now)}
-  </div>
-  ${blocks.join("\n")}
+
+<div class="cover">
+  <div class="eyebrow">Briefing Universal de Produto</div>
+  <h1>${escapeHtml(title)}</h1>
+  <div class="subtitle">${data.nicho ? escapeHtml(data.nicho) : "Infoproduto"}</div>
+  <div class="strategy-pill">${strat ? `${escapeHtml(strat.emoji)} ${escapeHtml(strat.name)}` : "Estratégia não selecionada"}</div>
+  <div class="pct">Completude: <strong>${completeness.pct}%</strong> (${completeness.filled}/${completeness.total} campos)</div>
+  <div class="bar"><span style="width:${completeness.pct}%"></span></div>
+  <div class="meta">Gerado em ${escapeHtml(now)} · Briefing Master AG</div>
+</div>
+
+<div class="toc">
+  <h2>📑 Sumário</h2>
+  <ol>${tocItems.join("")}</ol>
+</div>
+
+${blocks.join("\n")}
+
 </body>
 </html>`;
 }
 
 // ============================================================
-// DOCX (Word-compatible HTML — abre nativamente no Word, Google Docs, Pages)
+// DOCX (HTML servido como Word — compatível com Word/Google Docs/Pages)
 // ============================================================
 export function exportBriefingDocx(
   data: Record<string, string>,
   strategyId?: string | null,
 ): { filename: string; blob: Blob } {
   const html = buildBriefingHtml(data, strategyId);
-  // Truque consagrado: Word abre HTML enviado como application/msword e respeita os estilos inline.
   const docHtml =
     `<html xmlns:o="urn:schemas-microsoft-com:office:office" ` +
     `xmlns:w="urn:schemas-microsoft-com:office:word" xmlns="http://www.w3.org/TR/REC-html40">` +
@@ -212,94 +410,393 @@ export function exportBriefingDocx(
 }
 
 // ============================================================
-// PDF (jsPDF com texto puro — tipografia limpa, sem dependências pesadas)
+// PDF — capa, sumário, hierarquia, mapa em grade, rodapé paginado
 // ============================================================
 export function exportBriefingPdf(
   data: Record<string, string>,
   strategyId?: string | null,
 ): { filename: string; blob: Blob } {
   const strat = getStrategy(strategyId);
+  const completeness = computeCompleteness(data, strat);
+
   const doc = new jsPDF({ unit: "pt", format: "a4" });
   const pageW = doc.internal.pageSize.getWidth();
   const pageH = doc.internal.pageSize.getHeight();
-  const margin = 48;
+  const margin = 54;
   const contentW = pageW - margin * 2;
   let y = margin;
 
+  // ── helpers de baixo nível
+  const setText = (color: [number, number, number]) => doc.setTextColor(color[0], color[1], color[2]);
+  const setFill = (color: [number, number, number]) => doc.setFillColor(color[0], color[1], color[2]);
+  const setDraw = (color: [number, number, number]) => doc.setDrawColor(color[0], color[1], color[2]);
+
   const ensureSpace = (needed: number) => {
-    if (y + needed > pageH - margin) {
+    if (y + needed > pageH - margin - 24) {
       doc.addPage();
       y = margin;
     }
   };
 
-  const writeWrapped = (text: string, fontSize: number, opts: { bold?: boolean; color?: [number, number, number]; lineGap?: number } = {}) => {
+  const writeWrapped = (
+    text: string,
+    fontSize: number,
+    opts: { bold?: boolean; color?: [number, number, number]; lineGap?: number; align?: "left" | "center"; x?: number; w?: number } = {},
+  ) => {
     doc.setFont("helvetica", opts.bold ? "bold" : "normal");
     doc.setFontSize(fontSize);
-    doc.setTextColor(...(opts.color ?? [26, 26, 26]));
-    const lines = doc.splitTextToSize(text, contentW);
-    const lineHeight = fontSize * 1.25;
+    setText(opts.color ?? PALETTE.ink);
+    const w = opts.w ?? contentW;
+    const lines = doc.splitTextToSize(text, w);
+    const lineHeight = fontSize * 1.3;
     for (const line of lines) {
       ensureSpace(lineHeight);
-      doc.text(line, margin, y);
+      const x = opts.align === "center" ? pageW / 2 : (opts.x ?? margin);
+      doc.text(line, x, y, { align: opts.align });
       y += lineHeight;
     }
     y += opts.lineGap ?? 0;
   };
 
-  const writeKV = (label: string, value: string) => {
-    const v = value.trim() || "Não preenchido";
-    ensureSpace(14);
+  // ── CAPA
+  const drawCover = () => {
+    // faixa superior
+    setFill(PALETTE.brand);
+    doc.rect(0, 0, pageW, 8, "F");
+
+    y = 130;
+    setText(PALETTE.brand);
     doc.setFont("helvetica", "bold");
     doc.setFontSize(9);
-    doc.setTextColor(75, 85, 99);
-    doc.text(label.toUpperCase(), margin, y);
-    y += 11;
-    doc.setFont("helvetica", "normal");
+    doc.text("BRIEFING UNIVERSAL DE PRODUTO", pageW / 2, y, { align: "center" });
+    y += 26;
+
+    // título
+    writeWrapped(data.nomeProduto || "(sem nome)", 28, {
+      bold: true, color: PALETTE.ink, align: "center", lineGap: 6,
+    });
+
+    // subtítulo
+    if (data.nicho) {
+      writeWrapped(data.nicho, 13, { color: PALETTE.body, align: "center", lineGap: 8 });
+    }
+
+    // pílula da estratégia
+    const stratLabel = strat ? `${strat.emoji} ${strat.name}` : "Estratégia não selecionada";
+    doc.setFont("helvetica", "bold");
     doc.setFontSize(10.5);
-    doc.setTextColor(value.trim() ? 26 : 156, value.trim() ? 26 : 163, value.trim() ? 26 : 175);
-    const lines = doc.splitTextToSize(v, contentW);
-    const lh = 12.5;
-    for (const line of lines) { ensureSpace(lh); doc.text(line, margin, y); y += lh; }
-    y += 6;
+    const tw = doc.getTextWidth(stratLabel);
+    const padX = 14, padY = 7, pillW = tw + padX * 2, pillH = 22;
+    const pillX = (pageW - pillW) / 2;
+    setFill(strat ? PALETTE.brandSoft : [243, 244, 246]);
+    doc.roundedRect(pillX, y, pillW, pillH, 11, 11, "F");
+    setText(strat ? [30, 64, 175] : PALETTE.muted);
+    doc.text(stratLabel, pageW / 2, y + 14.5, { align: "center" });
+    y += pillH + 32;
+
+    // barra de completude
+    const barW = 240, barH = 8;
+    const barX = (pageW - barW) / 2;
+    setFill(PALETTE.rule);
+    doc.roundedRect(barX, y, barW, barH, 4, 4, "F");
+    setFill(PALETTE.brand);
+    const fillW = Math.max(2, (barW * completeness.pct) / 100);
+    doc.roundedRect(barX, y, fillW, barH, 4, 4, "F");
+    y += barH + 14;
+
+    setText(PALETTE.ink);
+    doc.setFont("helvetica", "bold");
+    doc.setFontSize(11);
+    doc.text(`Completude: ${completeness.pct}%`, pageW / 2, y, { align: "center" });
+    y += 14;
+    setText(PALETTE.muted);
+    doc.setFont("helvetica", "normal");
+    doc.setFontSize(9.5);
+    doc.text(`${completeness.filled} de ${completeness.total} campos preenchidos`, pageW / 2, y, { align: "center" });
+
+    // rodapé da capa
+    setText(PALETTE.muted);
+    doc.setFontSize(8.5);
+    doc.text(`Gerado em ${new Date().toLocaleString("pt-BR")} · Briefing Master AG`, pageW / 2, pageH - 60, { align: "center" });
+
+    // faixa inferior
+    setFill(PALETTE.brand);
+    doc.rect(0, pageH - 8, pageW, 8, "F");
+
+    doc.addPage();
+    y = margin;
   };
 
-  const writeSectionHeader = (text: string) => {
-    ensureSpace(28);
+  // ── SUMÁRIO
+  const drawToc = () => {
+    writeWrapped("📑 Sumário", 18, { bold: true, color: PALETTE.ink, lineGap: 8 });
+    setDraw(PALETTE.brand);
+    doc.setLineWidth(1.2);
+    doc.line(margin, y, margin + 60, y);
+    y += 18;
+
+    const blockLetters = ["A", "B", "C", "D", "E", "F"];
+    FIXED_SECTIONS.forEach((s, i) => {
+      ensureSpace(20);
+      // tag
+      const tag = `BLOCO ${blockLetters[i] ?? i + 1}`;
+      doc.setFont("helvetica", "bold");
+      doc.setFontSize(8.5);
+      setText(PALETTE.brand);
+      doc.text(tag, margin, y);
+      // título
+      doc.setFont("helvetica", "normal");
+      doc.setFontSize(11);
+      setText(PALETTE.ink);
+      doc.text(s.title, margin + 70, y);
+      y += 18;
+    });
+    if (strat) {
+      ensureSpace(20);
+      doc.setFont("helvetica", "bold");
+      doc.setFontSize(8.5);
+      setText(PALETTE.ok);
+      doc.text("ESTRATÉGIA", margin, y);
+      doc.setFont("helvetica", "normal");
+      doc.setFontSize(11);
+      setText(PALETTE.ink);
+      doc.text(`${strat.emoji} ${strat.name}`, margin + 70, y);
+      y += 18;
+    }
+    doc.addPage();
+    y = margin;
+  };
+
+  // ── Cabeçalho de bloco (faixa colorida + tag)
+  const writeBlockHeader = (letter: string, title: string, color: [number, number, number] = PALETTE.brand) => {
+    ensureSpace(48);
     y += 6;
-    doc.setDrawColor(229, 231, 235);
-    doc.setLineWidth(0.6);
+
+    // tag
+    doc.setFont("helvetica", "bold");
+    doc.setFontSize(8.5);
+    const tag = `BLOCO ${letter}`;
+    const tw = doc.getTextWidth(tag);
+    const padX = 7, tagW = tw + padX * 2, tagH = 16;
+    setFill(color);
+    doc.roundedRect(margin, y, tagW, tagH, 3, 3, "F");
+    setText([255, 255, 255]);
+    doc.text(tag, margin + padX, y + 11);
+
+    // título
+    setText(PALETTE.ink);
+    doc.setFont("helvetica", "bold");
+    doc.setFontSize(15);
+    doc.text(title, margin + tagW + 10, y + 12);
+    y += tagH + 8;
+
+    // linha base
+    setDraw(color);
+    doc.setLineWidth(1.2);
     doc.line(margin, y, pageW - margin, y);
     y += 14;
-    writeWrapped(text, 13, { bold: true, color: [31, 41, 55], lineGap: 4 });
   };
 
-  // Cabeçalho
-  writeWrapped(`Briefing Universal de Produto`, 18, { bold: true, color: [31, 41, 55], lineGap: 2 });
-  writeWrapped(data.nomeProduto || "(sem nome)", 14, { bold: true, color: [55, 65, 81], lineGap: 6 });
-  writeWrapped(
-    `Estratégia: ${strat ? `${strat.emoji} ${strat.name}` : "Não selecionada"}  •  Gerado em ${new Date().toLocaleString("pt-BR")}`,
-    9, { color: [107, 114, 128], lineGap: 6 },
-  );
+  // ── Sub-cabeçalho (para estratégia.sections)
+  const writeSubHeader = (text: string) => {
+    ensureSpace(22);
+    y += 4;
+    setText([30, 64, 175]);
+    doc.setFont("helvetica", "bold");
+    doc.setFontSize(11.5);
+    doc.text(text, margin, y);
+    y += 8;
+    setDraw(PALETTE.rule);
+    doc.setLineWidth(0.5);
+    doc.line(margin, y, pageW - margin, y);
+    y += 10;
+  };
+
+  // ── Caixa de "Descrição"
+  const drawCallout = (label: string, value: string) => {
+    const text = (value ?? "").trim();
+    const display = text || "Não preenchido";
+    doc.setFont("helvetica", "normal");
+    doc.setFontSize(10.5);
+    const lines = doc.splitTextToSize(display, contentW - 24);
+    const lineH = 13;
+    const innerH = 18 + lines.length * lineH + 10;
+
+    ensureSpace(innerH + 8);
+    const boxX = margin, boxY = y, boxW = contentW;
+    setFill(PALETTE.cardBg);
+    doc.roundedRect(boxX, boxY, boxW, innerH, 4, 4, "F");
+    setFill(PALETTE.brand);
+    doc.rect(boxX, boxY, 3, innerH, "F");
+
+    // label
+    setText(PALETTE.brand);
+    doc.setFont("helvetica", "bold");
+    doc.setFontSize(8);
+    doc.text(label.toUpperCase(), boxX + 12, boxY + 13);
+
+    // texto
+    setText(text ? PALETTE.ink : PALETTE.faint);
+    doc.setFont("helvetica", text ? "normal" : "italic");
+    doc.setFontSize(10.5);
+    let ty = boxY + 28;
+    for (const ln of lines) { doc.text(ln, boxX + 12, ty); ty += lineH; }
+
+    y = boxY + innerH + 10;
+  };
+
+  // ── Linha "label / valor"
+  const writeKV = (label: string, value: string) => {
+    const text = (value ?? "").trim();
+    const display = text || "Não preenchido";
+    ensureSpace(18);
+    setText(PALETTE.muted);
+    doc.setFont("helvetica", "bold");
+    doc.setFontSize(8.5);
+    doc.text(label.toUpperCase(), margin, y);
+    y += 12;
+
+    doc.setFont("helvetica", text ? "normal" : "italic");
+    doc.setFontSize(10.5);
+    setText(text ? PALETTE.ink : PALETTE.faint);
+    const lines = doc.splitTextToSize(display, contentW);
+    const lh = 13;
+    for (const ln of lines) { ensureSpace(lh); doc.text(ln, margin, y); y += lh; }
+    y += 8;
+  };
+
+  // ── Lista numerada (Dores/Desejos/Objeções)
+  const writeNumberedList = (heading: string, ids: string[]) => {
+    ensureSpace(20);
+    setText(PALETTE.body);
+    doc.setFont("helvetica", "bold");
+    doc.setFontSize(10.5);
+    doc.text(heading, margin, y);
+    y += 14;
+
+    ids.forEach((id, idx) => {
+      const text = (data[id] ?? "").trim();
+      const display = text || "Não preenchido";
+      const num = `${idx + 1}.`;
+      doc.setFont("helvetica", "bold");
+      doc.setFontSize(10);
+      setText(PALETTE.brand);
+      const numW = doc.getTextWidth(num) + 6;
+
+      doc.setFont("helvetica", text ? "normal" : "italic");
+      doc.setFontSize(10);
+      setText(text ? PALETTE.ink : PALETTE.faint);
+      const lines = doc.splitTextToSize(display, contentW - numW);
+      const lh = 13;
+      ensureSpace(lh);
+      // número
+      setText(PALETTE.brand);
+      doc.setFont("helvetica", "bold");
+      doc.text(num, margin, y);
+      // texto
+      setText(text ? PALETTE.ink : PALETTE.faint);
+      doc.setFont("helvetica", text ? "normal" : "italic");
+      doc.text(lines[0], margin + numW, y);
+      y += lh;
+      for (let i = 1; i < lines.length; i++) {
+        ensureSpace(lh);
+        doc.text(lines[i], margin + numW, y); y += lh;
+      }
+    });
+    y += 6;
+  };
+
+  // ── Mapa da Empatia em grade 3x2 com cards coloridos
+  const drawEmpathyGrid = () => {
+    const quads: Array<{
+      id: string; emoji: string; label: string; fill: [number, number, number]; border: [number, number, number]; titleColor: [number, number, number];
+    }> = [
+      { id: "me_pensaSente", emoji: "🧠", label: "Pensa & Sente", fill: [238, 242, 255], border: [199, 210, 254], titleColor: [67, 56, 202] },
+      { id: "me_ve",         emoji: "👀", label: "Vê",            fill: [236, 253, 245], border: [167, 243, 208], titleColor: [4, 120, 87] },
+      { id: "me_ouve",       emoji: "👂", label: "Ouve",          fill: [255, 247, 237], border: [254, 215, 170], titleColor: [194, 65, 12] },
+      { id: "me_falaFaz",    emoji: "💬", label: "Fala & Faz",    fill: [243, 244, 246], border: [209, 213, 219], titleColor: [55, 65, 81] },
+      { id: "me_dores",      emoji: "😣", label: "Dores",         fill: [254, 242, 242], border: [254, 202, 202], titleColor: [185, 28, 28] },
+      { id: "me_ganhos",     emoji: "🏆", label: "Ganhos",        fill: [239, 246, 255], border: [191, 219, 254], titleColor: [29, 78, 216] },
+    ];
+
+    const gap = 8;
+    const cardW = (contentW - gap * 2) / 3;
+    const cardPad = 10;
+    const titleH = 14;
+
+    // Calcular alturas de cada card baseado no conteúdo
+    doc.setFont("helvetica", "normal");
+    doc.setFontSize(9);
+    const rowsHeights: number[] = [];
+    for (let row = 0; row < 2; row++) {
+      let maxH = 0;
+      for (let col = 0; col < 3; col++) {
+        const q = quads[row * 3 + col];
+        const text = (data[q.id] ?? "").trim() || "Não preenchido";
+        const lines = doc.splitTextToSize(text, cardW - cardPad * 2);
+        const h = titleH + lines.length * 11 + cardPad * 2;
+        if (h > maxH) maxH = h;
+      }
+      rowsHeights.push(Math.max(maxH, 70));
+    }
+
+    const totalH = rowsHeights[0] + rowsHeights[1] + gap;
+    ensureSpace(totalH + 4);
+
+    let cy = y;
+    for (let row = 0; row < 2; row++) {
+      const rowH = rowsHeights[row];
+      for (let col = 0; col < 3; col++) {
+        const q = quads[row * 3 + col];
+        const cx = margin + col * (cardW + gap);
+        const text = (data[q.id] ?? "").trim();
+        const display = text || "Não preenchido";
+
+        // card
+        setFill(q.fill);
+        setDraw(q.border);
+        doc.setLineWidth(0.5);
+        doc.roundedRect(cx, cy, cardW, rowH, 4, 4, "FD");
+
+        // título
+        setText(q.titleColor);
+        doc.setFont("helvetica", "bold");
+        doc.setFontSize(8.5);
+        doc.text(`${q.emoji}  ${q.label.toUpperCase()}`, cx + cardPad, cy + cardPad + 6);
+
+        // texto
+        setText(text ? PALETTE.ink : PALETTE.faint);
+        doc.setFont("helvetica", text ? "normal" : "italic");
+        doc.setFontSize(9);
+        const lines = doc.splitTextToSize(display, cardW - cardPad * 2);
+        let ty = cy + cardPad + titleH + 6;
+        for (const ln of lines) { doc.text(ln, cx + cardPad, ty); ty += 11; }
+      }
+      cy += rowH + gap;
+    }
+    y = cy + 6;
+  };
+
+  // ============================================================
+  // CONSTRUÇÃO DO DOCUMENTO
+  // ============================================================
+  drawCover();
+  drawToc();
 
   const blockLetters = ["A", "B", "C", "D", "E", "F"];
   FIXED_SECTIONS.forEach((s, i) => {
-    writeSectionHeader(`BLOCO ${blockLetters[i] ?? i + 1} — ${s.title}`);
+    writeBlockHeader(blockLetters[i] ?? `${i + 1}`, s.title, PALETTE.brand);
+
     if (s.id === "avatar") {
-      writeKV("Descrição do Avatar", data.descricaoAvatar ?? "");
-      ["dor1", "dor2", "dor3"].forEach((id, idx) => writeKV(`Dor #${idx + 1}`, data[id] ?? ""));
-      ["desejo1", "desejo2", "desejo3"].forEach((id, idx) => writeKV(`Desejo #${idx + 1}`, data[id] ?? ""));
-      ["objecao1", "objecao2", "objecao3"].forEach((id, idx) => writeKV(`Objeção #${idx + 1}`, data[id] ?? ""));
+      drawCallout("Descrição do Avatar", data.descricaoAvatar ?? "");
+      writeNumberedList("😣 Dores", ["dor1", "dor2", "dor3"]);
+      writeNumberedList("🎯 Desejos", ["desejo1", "desejo2", "desejo3"]);
+      writeNumberedList("🛡 Objeções", ["objecao1", "objecao2", "objecao3"]);
       writeKV("Nível de Consciência", data.nivelConsciencia ?? "");
       writeKV("Canais Online", data.canaisOnline ?? "");
       writeKV("Resumo do Mapa da Empatia", data.empatiaResumo ?? "");
     } else if (s.id === "mapaEmpatia") {
-      writeKV("🧠 O que pensa e sente", data.me_pensaSente ?? "");
-      writeKV("👀 O que vê", data.me_ve ?? "");
-      writeKV("👂 O que ouve", data.me_ouve ?? "");
-      writeKV("💬 O que fala e faz", data.me_falaFaz ?? "");
-      writeKV("😣 Dores", data.me_dores ?? "");
-      writeKV("🏆 Ganhos", data.me_ganhos ?? "");
+      drawEmpathyGrid();
     } else {
       const fields = s.groups.flatMap((g) => g.fields ?? []);
       fields.forEach((f) => writeKV(f.label, data[f.id] ?? ""));
@@ -307,12 +804,30 @@ export function exportBriefingPdf(
   });
 
   if (strat) {
-    writeSectionHeader(`${strat.emoji} ${strat.name.toUpperCase()} — Detalhamento`);
+    writeBlockHeader(strat.emoji, `${strat.name} — Detalhamento`, PALETTE.ok);
     strat.sections.forEach((sec) => {
-      writeWrapped(sec.title, 11, { bold: true, color: [55, 65, 81], lineGap: 4 });
+      writeSubHeader(sec.title);
       const fields = sec.groups.flatMap((g) => g.fields ?? []);
       fields.forEach((f) => writeKV(f.label, data[f.id] ?? ""));
     });
+  }
+
+  // ── Rodapé com paginação em todas as páginas (exceto capa)
+  const pageCount = doc.getNumberOfPages();
+  for (let p = 2; p <= pageCount; p++) {
+    doc.setPage(p);
+    setDraw(PALETTE.rule);
+    doc.setLineWidth(0.4);
+    doc.line(margin, pageH - 32, pageW - margin, pageH - 32);
+
+    setText(PALETTE.muted);
+    doc.setFont("helvetica", "normal");
+    doc.setFontSize(8);
+    const left = data.nomeProduto || "Briefing";
+    doc.text(left, margin, pageH - 18);
+    const right = `${p - 1} / ${pageCount - 1}`;
+    doc.text(right, pageW - margin, pageH - 18, { align: "right" });
+    doc.text("Briefing Master AG", pageW / 2, pageH - 18, { align: "center" });
   }
 
   const blob = doc.output("blob");
