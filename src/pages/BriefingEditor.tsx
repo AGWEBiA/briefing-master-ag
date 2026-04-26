@@ -103,16 +103,25 @@ const BriefingEditor = () => {
   const isLast = currentIndex === sections.length - 1;
   const isFirst = currentIndex === 0;
 
-  const handleExport = () => {
-    const { filename, content } = exportBriefingMarkdown(data, strategyId);
-    downloadMarkdown(filename, content);
-    toast.success("Briefing exportado");
+  const [exporting, setExporting] = useState(false);
+  const [suggesting, setSuggesting] = useState(false);
+
+  const handleExport = (format: ExportFormat = "md") => {
+    setExporting(true);
+    try {
+      const filename = exportBriefing(format, data, strategyId);
+      toast.success(`Briefing exportado: ${filename}`);
+    } catch (e) {
+      toast.error(`Falha ao exportar: ${(e as Error).message}`);
+    } finally {
+      setExporting(false);
+    }
   };
 
   const handleFinalize = async () => {
     if (!id) return;
     await supabase.from("briefings").update({ is_complete: true }).eq("id", id);
-    handleExport();
+    handleExport("pdf");
   };
 
   const handleReset = async () => {
@@ -125,10 +134,33 @@ const BriefingEditor = () => {
   };
 
   const handleReverseEngineerApply = (incoming: Record<string, string>) => {
-    // Sobrescreve tudo: substitui data pelo retorno da IA
     setData({ ...incoming });
     setCurrentIndex(0);
     setVisited(new Set());
+  };
+
+  const handleSuggestICP = async () => {
+    if (!data.nomeProduto && !data.nicho && !data.transformacaoPrincipal) {
+      toast.error("Preencha pelo menos nome, nicho ou transformação antes de pedir o ICP.");
+      return;
+    }
+    setSuggesting(true);
+    const { data: res, error } = await supabase.functions.invoke("suggest-icp", {
+      body: { briefing: data },
+    });
+    setSuggesting(false);
+    if (error || res?.error) {
+      toast.error(res?.error ?? (error as { message?: string })?.message ?? "Falha ao sugerir ICP.");
+      return;
+    }
+    if (!res?.data || Object.keys(res.data).length === 0) {
+      toast.error("A IA não retornou dados de ICP.");
+      return;
+    }
+    setData((prev) => ({ ...prev, ...(res.data as Record<string, string>) }));
+    toast.success("Cliente Ideal sugerido — campos do Avatar e Mapa da Empatia preenchidos.");
+    const idx = sections.findIndex((s) => s.id === "avatar");
+    if (idx >= 0) setCurrentIndex(idx);
   };
 
   if (loading) {
