@@ -9,9 +9,13 @@ interface Props {
   field: Field;
   value: string;
   onChange: (v: string) => void;
+  /** Dados completos do briefing — usado por campos com `optionsFn` dinâmico. */
+  allData?: Record<string, string>;
 }
 
-export const FieldRenderer = ({ field, value, onChange }: Props) => {
+export const FieldRenderer = ({ field, value, onChange, allData }: Props) => {
+  const dynamicOptions = field.optionsFn ? field.optionsFn(allData ?? {}) : field.options;
+  const fieldWithOptions = { ...field, options: dynamicOptions };
   const labelEl = (
     <Label htmlFor={field.id} className="text-sm font-medium">
       {field.label}
