@@ -116,9 +116,10 @@ Deno.serve(async (req) => {
     const userId = userData.user.id;
 
     const body = await req.json();
-    const { briefing, engine = "lovable" } = body as {
+    const { briefing, engine = "lovable", onlyEmpathy = false } = body as {
       briefing?: BriefingSnapshot;
       engine?: "lovable" | "openai" | "gemini";
+      onlyEmpathy?: boolean;
     };
 
     if (!briefing || typeof briefing !== "object") {
