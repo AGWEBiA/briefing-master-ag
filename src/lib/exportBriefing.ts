@@ -734,6 +734,12 @@ export function exportBriefingPdf(
   };
 
   // ── Mapa da Empatia em grade 3x2 com cards coloridos (sem emojis)
+  // Estratégia de paginação:
+  //  • cada LINHA do grid é tratada como uma unidade indivisível quando cabe na página;
+  //  • se uma linha não couber na página atual, vai inteira para a próxima página;
+  //  • se uma linha for maior que a página inteira (conteúdo muito grande em algum quadrante),
+  //    a linha é dividida em "fatias verticais" que continuam na página seguinte,
+  //    repetindo o cabeçalho de cada quadrante com a marca "(continuação)".
   const drawEmpathyGrid = () => {
     const quads: Array<{
       id: string; label: string; fill: [number, number, number]; border: [number, number, number]; titleColor: [number, number, number];
@@ -750,66 +756,137 @@ export function exportBriefingPdf(
     const cardW = (contentW - gap * 2) / 3;
     const cardPad = 10;
     const titleH = 16;
+    const lineH = 11;
+    const minCardH = 80;
 
-    // Calcular alturas de cada card baseado no conteúdo
+    // Quebra linhas de texto de cada quadrante (mesmas para todas as fatias)
     doc.setFont("helvetica", "normal");
     doc.setFontSize(9);
-    const rowsHeights: number[] = [];
-    for (let row = 0; row < 2; row++) {
-      let maxH = 0;
-      for (let col = 0; col < 3; col++) {
-        const q = quads[row * 3 + col];
-        const text = stripEmojis((data[q.id] ?? "").trim()) || "Não preenchido";
-        const lines = doc.splitTextToSize(text, cardW - cardPad * 2);
-        const h = titleH + lines.length * 11 + cardPad * 2;
-        if (h > maxH) maxH = h;
+    const wrapped = quads.map((q) => {
+      const text = stripEmojis((data[q.id] ?? "").trim());
+      const lines = doc.splitTextToSize(text || "Não preenchido", cardW - cardPad * 2) as string[];
+      return { q, text, lines };
+    });
+
+    const drawCard = (
+      cx: number,
+      cy: number,
+      cardH: number,
+      q: typeof quads[number],
+      slice: string[],
+      hasText: boolean,
+      isContinuation: boolean,
+    ) => {
+      // card
+      setFill(q.fill);
+      setDraw(q.border);
+      doc.setLineWidth(0.5);
+      doc.roundedRect(cx, cy, cardW, cardH, 4, 4, "FD");
+
+      // bullet colorido (substitui emoji)
+      setFill(q.titleColor);
+      doc.circle(cx + cardPad + 2.5, cy + cardPad + 3.5, 2.5, "F");
+
+      // título
+      setText(q.titleColor);
+      doc.setFont("helvetica", "bold");
+      doc.setFontSize(8.5);
+      const labelTxt = isContinuation ? `${q.label.toUpperCase()} (CONT.)` : q.label.toUpperCase();
+      doc.text(labelTxt, cx + cardPad + 10, cy + cardPad + 6);
+
+      // texto
+      setText(hasText ? PALETTE.ink : PALETTE.faint);
+      doc.setFont("helvetica", hasText ? "normal" : "italic");
+      doc.setFontSize(9);
+      let ty = cy + cardPad + titleH + 4;
+      for (const ln of slice) {
+        doc.text(ln, cx + cardPad, ty);
+        ty += lineH;
       }
-      rowsHeights.push(Math.max(maxH, 80));
-    }
+    };
 
-    const totalH = rowsHeights[0] + rowsHeights[1] + gap;
-    // Se não couber, força nova página para manter o grid intacto
-    if (y + totalH + 4 > pageH - margin - 32) {
-      doc.addPage();
-      y = margin;
-    }
+    const drawRow = (rowIdx: number) => {
+      const cells = [0, 1, 2].map((col) => wrapped[rowIdx * 3 + col]);
 
-    let cy = y;
-    for (let row = 0; row < 2; row++) {
-      const rowH = rowsHeights[row];
-      for (let col = 0; col < 3; col++) {
-        const q = quads[row * 3 + col];
-        const cx = margin + col * (cardW + gap);
-        const text = stripEmojis((data[q.id] ?? "").trim());
-        const display = text || "Não preenchido";
+      // Altura ideal da linha para caber TODO o texto de cada cell
+      const idealRowH = Math.max(
+        minCardH,
+        ...cells.map((c) => titleH + c.lines.length * lineH + cardPad * 2),
+      );
 
-        // card
-        setFill(q.fill);
-        setDraw(q.border);
-        doc.setLineWidth(0.5);
-        doc.roundedRect(cx, cy, cardW, rowH, 4, 4, "FD");
+      const pageBudget = pageH - margin - 32; // espaço útil até o rodapé
+      const availableNow = pageBudget - y;
+      const fullPage = pageBudget - margin; // altura útil total numa página em branco
 
-        // bullet colorido (substitui emoji)
-        setFill(q.titleColor);
-        doc.circle(cx + cardPad + 2.5, cy + cardPad + 3.5, 2.5, "F");
-
-        // título
-        setText(q.titleColor);
-        doc.setFont("helvetica", "bold");
-        doc.setFontSize(8.5);
-        doc.text(q.label.toUpperCase(), cx + cardPad + 10, cy + cardPad + 6);
-
-        // texto
-        setText(text ? PALETTE.ink : PALETTE.faint);
-        doc.setFont("helvetica", text ? "normal" : "italic");
-        doc.setFontSize(9);
-        const lines = doc.splitTextToSize(display, cardW - cardPad * 2);
-        let ty = cy + cardPad + titleH + 4;
-        for (const ln of lines) { doc.text(ln, cx + cardPad, ty); ty += 11; }
+      // Caso 1: linha inteira cabe na página atual
+      if (idealRowH <= availableNow) {
+        let cy = y;
+        cells.forEach((c, col) => {
+          const cx = margin + col * (cardW + gap);
+          drawCard(cx, cy, idealRowH, c.q, c.lines, !!c.text, false);
+        });
+        y = cy + idealRowH + gap;
+        return;
       }
-      cy += rowH + gap;
-    }
-    y = cy + 8;
+
+      // Caso 2: cabe numa página em branco → empurra para próxima página inteira
+      if (idealRowH <= fullPage) {
+        doc.addPage();
+        y = margin;
+        let cy = y;
+        cells.forEach((c, col) => {
+          const cx = margin + col * (cardW + gap);
+          drawCard(cx, cy, idealRowH, c.q, c.lines, !!c.text, false);
+        });
+        y = cy + idealRowH + gap;
+        return;
+      }
+
+      // Caso 3: linha é maior que uma página inteira → fatiar em múltiplas páginas
+      // Calcula quantas linhas de texto cabem em cada fatia (descontando padding+título)
+      const linesPerSlice = (heightAvail: number) =>
+        Math.max(1, Math.floor((heightAvail - cardPad * 2 - titleH - 4) / lineH));
+
+      // Cursores de quantas linhas já desenhamos em cada cell
+      const cursors = [0, 0, 0];
+      const totals = cells.map((c) => c.lines.length);
+      let isFirstSlice = true;
+
+      while (cursors.some((cur, i) => cur < totals[i])) {
+        // Se já existe conteúdo na página atual e ela está cheia, vai pra próxima
+        if (!isFirstSlice || pageBudget - y < minCardH + 20) {
+          doc.addPage();
+          y = margin;
+        }
+        const sliceAvail = pageBudget - y;
+        const maxLines = linesPerSlice(sliceAvail);
+
+        // Determina quantas linhas cada cell vai consumir nesta fatia
+        const sliceLines = cells.map((c, i) => {
+          const remaining = totals[i] - cursors[i];
+          return Math.min(maxLines, remaining);
+        });
+        const sliceMaxLines = Math.max(1, ...sliceLines);
+        const sliceH = Math.max(minCardH, titleH + sliceMaxLines * lineH + cardPad * 2);
+
+        let cy = y;
+        cells.forEach((c, col) => {
+          const cx = margin + col * (cardW + gap);
+          const start = cursors[col];
+          const end = start + sliceLines[col];
+          const slice = c.lines.slice(start, end);
+          const continuation = !isFirstSlice && start > 0;
+          drawCard(cx, cy, sliceH, c.q, slice.length ? slice : [""], !!c.text, continuation);
+          cursors[col] = end;
+        });
+        y = cy + sliceH + gap;
+        isFirstSlice = false;
+      }
+    };
+
+    drawRow(0);
+    drawRow(1);
+    y += 8;
   };
 
   // ============================================================
