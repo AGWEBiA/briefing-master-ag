@@ -22,6 +22,7 @@ import { BriefingSidebar } from "@/components/briefing/BriefingSidebar";
 import { FieldRenderer } from "@/components/briefing/FieldRenderer";
 import { StrategyPicker } from "@/components/briefing/StrategyPicker";
 import { ReverseEngineerDialog } from "@/components/briefing/ReverseEngineerDialog";
+import { EmpathyMapPreview } from "@/components/briefing/EmpathyMapPreview";
 import {
   FIXED_SECTIONS, getStrategy, type Section, type StrategyId,
 } from "@/lib/briefingSchema";
@@ -397,6 +398,14 @@ const BriefingEditor = () => {
                       toast.success("Estratégia selecionada — novas seções adicionadas.");
                     }}
                   />
+                  <div className="border-t" />
+                </>
+              )}
+
+              {/* Preview interativo do Mapa da Empatia (grid 3x2) */}
+              {section.id === "mapaEmpatia" && (
+                <>
+                  <EmpathyMapPreview data={data} onChange={updateField} />
                   <div className="border-t" />
                 </>
               )}
