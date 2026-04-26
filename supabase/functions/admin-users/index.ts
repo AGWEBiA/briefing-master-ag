@@ -47,22 +47,22 @@ Deno.serve(async (req) => {
     const body = await req.json().catch(() => ({}));
     const action = String(body.action ?? "");
 
-    // Helper: verifica se email já existe (case-insensitive)
-    const emailExists = async (email: string): Promise<boolean> => {
-      const target = email.trim().toLowerCase();
-      if (!target) return false;
-      // listUsers paginado — varre até encontrar
+    // Carrega lista completa de usuários (com paginação) — usado para detectar emails duplicados
+    const loadAllUsers = async () => {
+      const all: Array<{ id: string; email: string | null }> = [];
       let page = 1;
       const perPage = 200;
-      while (true) {
+      while (page <= 25) {
         const { data, error } = await admin.auth.admin.listUsers({ page, perPage });
-        if (error) return false;
-        if (data.users.some((u) => (u.email ?? "").toLowerCase() === target)) return true;
-        if (data.users.length < perPage) return false;
+        if (error) break;
+        for (const u of data.users) all.push({ id: u.id, email: u.email ?? null });
+        if (data.users.length < perPage) break;
         page += 1;
-        if (page > 25) return false; // segurança: até 5000 usuários
       }
+      return all;
     };
+    const buildEmailSet = (users: Array<{ email: string | null }>) =>
+      new Set(users.map((u) => (u.email ?? "").toLowerCase()).filter(Boolean));
 
     if (action === "list") {
       const { data: list, error: lerr } = await admin.auth.admin.listUsers({
