@@ -5,7 +5,7 @@ import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
-import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
+
 import { toast } from "sonner";
 import { z } from "zod";
 import { supabase } from "@/integrations/supabase/client";
@@ -13,7 +13,7 @@ import { lovable } from "@/integrations/lovable";
 import { useAuth } from "@/contexts/AuthContext";
 
 const emailSchema = z.string().trim().email("E-mail inválido").max(255);
-const pwdSchema = z.string().min(8, "Mínimo 8 caracteres").max(72);
+
 
 const GoogleIcon = () => (
   <svg viewBox="0 0 24 24" className="h-4 w-4">
@@ -39,27 +39,7 @@ const Auth = () => {
     }
   }, [user, loading, navigate, location.state]);
 
-  const handleSignUp = async (e: React.FormEvent) => {
-    e.preventDefault();
-    const ev = emailSchema.safeParse(email);
-    const pv = pwdSchema.safeParse(password);
-    if (!ev.success) return toast.error(ev.error.issues[0].message);
-    if (!pv.success) return toast.error(pv.error.issues[0].message);
-
-    setBusy(true);
-    const { error } = await supabase.auth.signUp({
-      email: ev.data,
-      password: pv.data,
-      options: { emailRedirectTo: `${window.location.origin}/dashboard` },
-    });
-    setBusy(false);
-    if (error) {
-      if (error.message.includes("already")) toast.error("Este e-mail já está cadastrado.");
-      else toast.error(error.message);
-      return;
-    }
-    toast.success("Conta criada! Você já pode entrar.");
-  };
+  // Cadastros são feitos exclusivamente pelo admin.
 
   const handleSignIn = async (e: React.FormEvent) => {
     e.preventDefault();
@@ -117,32 +97,17 @@ const Auth = () => {
               </div>
             </div>
 
-            <Tabs defaultValue="signin">
-              <TabsList className="grid w-full grid-cols-2">
-                <TabsTrigger value="signin">Entrar</TabsTrigger>
-                <TabsTrigger value="signup">Criar conta</TabsTrigger>
-              </TabsList>
+            <form onSubmit={handleSignIn} className="space-y-3">
+              <FieldEmail value={email} onChange={setEmail} />
+              <FieldPassword value={password} onChange={setPassword} />
+              <Button type="submit" className="w-full" disabled={busy}>
+                {busy ? <Loader2 className="h-4 w-4 animate-spin" /> : "Entrar"}
+              </Button>
+            </form>
 
-              <TabsContent value="signin" className="mt-4">
-                <form onSubmit={handleSignIn} className="space-y-3">
-                  <FieldEmail value={email} onChange={setEmail} />
-                  <FieldPassword value={password} onChange={setPassword} />
-                  <Button type="submit" className="w-full" disabled={busy}>
-                    {busy ? <Loader2 className="h-4 w-4 animate-spin" /> : "Entrar"}
-                  </Button>
-                </form>
-              </TabsContent>
-
-              <TabsContent value="signup" className="mt-4">
-                <form onSubmit={handleSignUp} className="space-y-3">
-                  <FieldEmail value={email} onChange={setEmail} />
-                  <FieldPassword value={password} onChange={setPassword} hint="Mínimo 8 caracteres" />
-                  <Button type="submit" className="w-full" disabled={busy}>
-                    {busy ? <Loader2 className="h-4 w-4 animate-spin" /> : "Criar conta"}
-                  </Button>
-                </form>
-              </TabsContent>
-            </Tabs>
+            <p className="pt-2 text-center text-xs text-muted-foreground">
+              Não tem acesso? Solicite a um administrador para criar sua conta.
+            </p>
           </CardContent>
         </Card>
       </div>

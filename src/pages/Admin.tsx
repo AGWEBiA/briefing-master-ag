@@ -1,5 +1,6 @@
-import { useEffect, useState } from "react";
-import { Loader2, Shield, Users, FileText, Pencil, Trash2, KeyRound, Mail, UserCog } from "lucide-react";
+import { useEffect, useRef, useState } from "react";
+import * as XLSX from "xlsx";
+import { Loader2, Shield, Users, FileText, Pencil, Trash2, KeyRound, Mail, UserCog, UserPlus, Upload, Download } from "lucide-react";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
@@ -45,6 +46,14 @@ const Admin = () => {
   const [briefings, setBriefings] = useState<BriefingRow[]>([]);
   const [editing, setEditing] = useState<AdminUser | null>(null);
   const [deleting, setDeleting] = useState<AdminUser | null>(null);
+  const [creating, setCreating] = useState(false);
+  const [importResult, setImportResult] = useState<null | {
+    created: number;
+    total: number;
+    results: Array<{ email: string; status: "created" | "error"; error?: string }>;
+  }>(null);
+  const [importing, setImporting] = useState(false);
+  const fileRef = useRef<HTMLInputElement>(null);
 
   const loadUsers = async () => {
     const { data, error } = await supabase.functions.invoke("admin-users", {
@@ -66,6 +75,73 @@ const Admin = () => {
       setLoading(false);
     })();
   }, []);
+
+  const downloadTemplate = () => {
+    const ws = XLSX.utils.json_to_sheet([
+      { email: "exemplo@dominio.com", password: "senha123", display_name: "Nome Completo", is_admin: false },
+      { email: "admin@dominio.com", password: "outraSenha", display_name: "Admin Exemplo", is_admin: true },
+    ]);
+    const wb = XLSX.utils.book_new();
+    XLSX.utils.book_append_sheet(wb, ws, "usuarios");
+    XLSX.writeFile(wb, "modelo-importacao-usuarios.xlsx");
+  };
+
+  const handleFile = async (e: React.ChangeEvent<HTMLInputElement>) => {
+    const file = e.target.files?.[0];
+    if (!file) return;
+    e.target.value = "";
+
+    try {
+      const buf = await file.arrayBuffer();
+      const wb = XLSX.read(buf, { type: "array" });
+      const sheet = wb.Sheets[wb.SheetNames[0]];
+      const rows = XLSX.utils.sheet_to_json<Record<string, unknown>>(sheet, { defval: "" });
+
+      const items = rows.map((r) => {
+        const get = (keys: string[]) => {
+          for (const k of keys) {
+            const found = Object.keys(r).find((x) => x.toLowerCase().trim() === k);
+            if (found && r[found] !== "" && r[found] != null) return String(r[found]).trim();
+          }
+          return "";
+        };
+        const adminRaw = get(["is_admin", "admin", "isadmin"]).toLowerCase();
+        return {
+          email: get(["email", "e-mail"]),
+          password: get(["password", "senha"]),
+          display_name: get(["display_name", "nome", "name", "full_name"]) || null,
+          is_admin: ["true", "1", "sim", "yes", "x"].includes(adminRaw),
+        };
+      }).filter((i) => i.email);
+
+      if (!items.length) {
+        toast.error("Nenhuma linha válida encontrada.");
+        return;
+      }
+
+      setImporting(true);
+      const { data, error } = await supabase.functions.invoke("admin-users", {
+        body: { action: "bulk_create", items },
+      });
+      setImporting(false);
+
+      if (error || data?.error) {
+        toast.error(data?.error ?? "Falha na importação");
+        return;
+      }
+      setImportResult({
+        created: data.created,
+        total: data.total,
+        results: data.results,
+      });
+      toast.success(`${data.created}/${data.total} usuários importados`);
+      await loadUsers();
+    } catch (err) {
+      setImporting(false);
+      toast.error("Não foi possível ler a planilha");
+      console.error(err);
+    }
+  };
 
   if (loading) {
     return (
@@ -101,9 +177,37 @@ const Admin = () => {
         </div>
 
         <Card>
-          <CardHeader className="flex flex-row items-center justify-between">
+          <CardHeader className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
             <CardTitle className="text-base">Gestão de Usuários</CardTitle>
-            <Button variant="outline" size="sm" onClick={loadUsers}>Recarregar</Button>
+            <div className="flex flex-wrap items-center gap-2">
+              <input
+                ref={fileRef}
+                type="file"
+                accept=".xlsx,.xls,.csv"
+                className="hidden"
+                onChange={handleFile}
+              />
+              <Button variant="outline" size="sm" onClick={downloadTemplate}>
+                <Download className="mr-1.5 h-4 w-4" /> Modelo XLSX
+              </Button>
+              <Button
+                variant="outline"
+                size="sm"
+                onClick={() => fileRef.current?.click()}
+                disabled={importing}
+              >
+                {importing ? (
+                  <Loader2 className="mr-1.5 h-4 w-4 animate-spin" />
+                ) : (
+                  <Upload className="mr-1.5 h-4 w-4" />
+                )}
+                Importar XLSX
+              </Button>
+              <Button size="sm" onClick={() => setCreating(true)}>
+                <UserPlus className="mr-1.5 h-4 w-4" /> Novo usuário
+              </Button>
+              <Button variant="ghost" size="sm" onClick={loadUsers}>Recarregar</Button>
+            </div>
           </CardHeader>
           <CardContent>
             <Table>
@@ -198,6 +302,17 @@ const Admin = () => {
         currentUserId={user?.id ?? null}
         onClose={() => setEditing(null)}
         onSaved={async () => { setEditing(null); await loadUsers(); }}
+      />
+
+      <CreateUserDialog
+        open={creating}
+        onClose={() => setCreating(false)}
+        onCreated={async () => { setCreating(false); await loadUsers(); }}
+      />
+
+      <ImportResultDialog
+        result={importResult}
+        onClose={() => setImportResult(null)}
       />
 
       <AlertDialog open={!!deleting} onOpenChange={(o) => !o && setDeleting(null)}>
@@ -332,6 +447,145 @@ const EditUserDialog = ({
             {saving && <Loader2 className="mr-2 h-4 w-4 animate-spin" />}
             Salvar
           </Button>
+        </DialogFooter>
+      </DialogContent>
+    </Dialog>
+  );
+};
+
+const CreateUserDialog = ({
+  open, onClose, onCreated,
+}: {
+  open: boolean;
+  onClose: () => void;
+  onCreated: () => void;
+}) => {
+  const [displayName, setDisplayName] = useState("");
+  const [email, setEmail] = useState("");
+  const [password, setPassword] = useState("");
+  const [isAdmin, setIsAdmin] = useState(false);
+  const [saving, setSaving] = useState(false);
+
+  useEffect(() => {
+    if (open) {
+      setDisplayName(""); setEmail(""); setPassword(""); setIsAdmin(false);
+    }
+  }, [open]);
+
+  const create = async () => {
+    if (!email.trim() || !password) return toast.error("Email e senha são obrigatórios");
+    if (password.length < 6) return toast.error("Senha deve ter ao menos 6 caracteres");
+    setSaving(true);
+    const { data, error } = await supabase.functions.invoke("admin-users", {
+      body: {
+        action: "create",
+        email: email.trim(),
+        password,
+        display_name: displayName.trim() || null,
+        is_admin: isAdmin,
+      },
+    });
+    setSaving(false);
+    if (error || data?.error) {
+      toast.error(data?.error ?? "Falha ao criar usuário");
+      return;
+    }
+    toast.success("Usuário criado");
+    onCreated();
+  };
+
+  return (
+    <Dialog open={open} onOpenChange={(o) => !o && onClose()}>
+      <DialogContent className="max-w-md">
+        <DialogHeader>
+          <DialogTitle>Criar novo usuário</DialogTitle>
+          <DialogDescription>
+            O usuário receberá acesso imediato com email já confirmado.
+          </DialogDescription>
+        </DialogHeader>
+        <div className="space-y-4 py-2">
+          <div className="space-y-2">
+            <Label className="flex items-center gap-2"><UserCog className="h-3.5 w-3.5" />Nome</Label>
+            <Input value={displayName} onChange={(e) => setDisplayName(e.target.value)} placeholder="Nome completo" />
+          </div>
+          <div className="space-y-2">
+            <Label className="flex items-center gap-2"><Mail className="h-3.5 w-3.5" />Email</Label>
+            <Input type="email" value={email} onChange={(e) => setEmail(e.target.value)} placeholder="usuario@dominio.com" />
+          </div>
+          <div className="space-y-2">
+            <Label className="flex items-center gap-2"><KeyRound className="h-3.5 w-3.5" />Senha</Label>
+            <Input
+              type="text"
+              value={password}
+              onChange={(e) => setPassword(e.target.value)}
+              placeholder="Mínimo 6 caracteres"
+            />
+          </div>
+          <div className="flex items-center justify-between rounded-lg border p-3">
+            <div>
+              <p className="text-sm font-medium">Conceder acesso de Admin</p>
+              <p className="text-xs text-muted-foreground">Acesso ao painel administrativo.</p>
+            </div>
+            <Switch checked={isAdmin} onCheckedChange={setIsAdmin} />
+          </div>
+        </div>
+        <DialogFooter>
+          <Button variant="outline" onClick={onClose} disabled={saving}>Cancelar</Button>
+          <Button onClick={create} disabled={saving}>
+            {saving && <Loader2 className="mr-2 h-4 w-4 animate-spin" />}
+            Criar usuário
+          </Button>
+        </DialogFooter>
+      </DialogContent>
+    </Dialog>
+  );
+};
+
+const ImportResultDialog = ({
+  result, onClose,
+}: {
+  result: null | {
+    created: number;
+    total: number;
+    results: Array<{ email: string; status: "created" | "error"; error?: string }>;
+  };
+  onClose: () => void;
+}) => {
+  return (
+    <Dialog open={!!result} onOpenChange={(o) => !o && onClose()}>
+      <DialogContent className="max-w-lg">
+        <DialogHeader>
+          <DialogTitle>Resultado da importação</DialogTitle>
+          <DialogDescription>
+            {result?.created ?? 0} de {result?.total ?? 0} usuários foram criados com sucesso.
+          </DialogDescription>
+        </DialogHeader>
+        <div className="max-h-80 overflow-auto rounded-md border">
+          <Table>
+            <TableHeader>
+              <TableRow>
+                <TableHead>Email</TableHead>
+                <TableHead>Status</TableHead>
+                <TableHead>Detalhes</TableHead>
+              </TableRow>
+            </TableHeader>
+            <TableBody>
+              {result?.results.map((r, i) => (
+                <TableRow key={i}>
+                  <TableCell className="text-sm">{r.email || "—"}</TableCell>
+                  <TableCell>
+                    {r.status === "created"
+                      ? <Badge className="bg-success text-success-foreground">Criado</Badge>
+                      : <Badge variant="destructive">Erro</Badge>}
+                  </TableCell>
+                  <TableCell className="text-xs text-muted-foreground">{r.error ?? "—"}</TableCell>
+                </TableRow>
+              ))}
+            </TableBody>
+          </Table>
+        </div>
+        <DialogFooter>
+          <Button onClick={onClose}>Fechar</Button>
         </DialogFooter>
       </DialogContent>
     </Dialog>
