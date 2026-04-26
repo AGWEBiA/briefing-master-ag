@@ -529,78 +529,109 @@ Deno.serve(async (req) => {
       if (!ok) await tryFetch();
     }
 
-    // Avaliação de qualidade
-    const quality = assessContentQuality(pageContent);
+    // Avaliação de qualidade do conteúdo já raspado
+    let quality = assessContentQuality(pageContent);
 
-    // Modo "inspect": devolve resultado da raspagem para o usuário decidir
-    if (mode === "inspect" || (mode === "auto" && !quality.ok && forceMethod !== "perplexity")) {
-      // Se em "auto" e qualidade ruim, ainda tenta perplexity automaticamente caso esteja conectada
-      if (mode === "auto" && byProvider.perplexity?.api_key) {
-        const ok = await tryPerplexity();
-        const q2 = assessContentQuality(pageContent);
-        if (ok && q2.ok) {
-          // segue normal
-        } else {
-          return new Response(
-            JSON.stringify({
-              needsChoice: true,
-              errorCode: scrapeBlocked ? "SITE_BLOCKED" : "WEAK_CONTENT",
-              message: scrapeBlocked
-                ? `O site bloqueou a leitura automatizada (HTTP ${scrapeStatus || "?"}). Você pode tentar novamente usando a Perplexity para resumir a página, ou colar outro link.`
-                : `O conteúdo extraído ficou muito curto (${quality.chars} caracteres) — pode ser uma SPA, um site protegido ou uma página vazia.`,
-              quality,
-              scrapeMethod,
-              scrapeStatus,
-              preview: pageContent.slice(0, 600),
-              hasPerplexity: !!byProvider.perplexity?.api_key,
-              hasFirecrawl: !!byProvider.firecrawl?.api_key,
-              suggestions: [
-                ...(byProvider.perplexity?.api_key
-                  ? [{ id: "retry-perplexity", label: "Tentar com Perplexity (resumo da web)" }]
-                  : [{ id: "connect-perplexity", label: "Conectar Perplexity em Integrações" }]),
-                { id: "change-url", label: "Usar outro link" },
-              ],
-            }),
-            { status: 200, headers: { ...corsHeaders, "Content-Type": "application/json" } },
-          );
-        }
-      } else if (mode === "inspect") {
-        // só inspeção: nunca chama LLM
+    // Helper para montar o payload de "needsChoice" com prévia rica + recomendação
+    const buildChoicePayload = (extra?: Partial<Record<string, unknown>>) => {
+      const hasFirecrawl = !!byProvider.firecrawl?.api_key;
+      const hasPerplexity = !!byProvider.perplexity?.api_key;
+      const recommended = recommendNextMethod({
+        triedMethod: scrapeMethod,
+        hasFirecrawl,
+        hasPerplexity,
+        blocked: scrapeBlocked,
+      });
+
+      // Bloqueio automático: método que claramente não vai funcionar fica desabilitado
+      const methods = {
+        fetch: {
+          available: true,
+          disabled: scrapeBlocked && scrapeMethod === "fetch",
+          reason: scrapeBlocked && scrapeMethod === "fetch"
+            ? `Bloqueado pelo site (HTTP ${scrapeStatus || "?"})`
+            : undefined,
+        },
+        firecrawl: {
+          available: hasFirecrawl,
+          disabled: false,
+          reason: hasFirecrawl ? undefined : "Conecte Firecrawl em Integrações",
+        },
+        perplexity: {
+          available: hasPerplexity,
+          disabled: false,
+          reason: hasPerplexity ? undefined : "Conecte Perplexity em Integrações",
+        },
+      };
+
+      return {
+        needsChoice: true,
+        errorCode: scrapeBlocked ? "SITE_BLOCKED" : "WEAK_CONTENT",
+        message: scrapeBlocked
+          ? `O site bloqueou a leitura automatizada${scrapeStatus ? ` (HTTP ${scrapeStatus})` : ""}. ${
+              recommended === "perplexity"
+                ? "Recomendamos pesquisar o nicho via Perplexity."
+                : recommended === "firecrawl"
+                ? "Recomendamos extrair com Firecrawl (renderiza JS)."
+                : "Conecte Firecrawl ou Perplexity para contornar."
+            }`
+          : `Conteúdo extraído tem qualidade ${quality.level} (${quality.score}/100, ${quality.chars} caracteres, ${quality.words} palavras). ${
+              recommended === "firecrawl"
+                ? "Recomendamos Firecrawl — renderiza JavaScript e funciona melhor em SPAs."
+                : recommended === "perplexity"
+                ? "Recomendamos Perplexity — pesquisa o nicho mesmo sem ler a página."
+                : "Conecte Firecrawl ou Perplexity para tentar uma extração melhor."
+            }`,
+        quality,
+        scrapeMethod,
+        scrapeStatus,
+        preview: {
+          length: pageContent.length,
+          chars: quality.chars,
+          words: quality.words,
+          score: quality.score,
+          level: quality.level,
+          head: quality.snippets.head,
+          middle: quality.snippets.middle,
+          tail: quality.snippets.tail,
+        },
+        recommended,
+        methods,
+        hasPerplexity,
+        hasFirecrawl,
+        ...(extra ?? {}),
+      };
+    };
+
+    // Modo "inspect": só raspa e devolve métricas — nunca chama LLM
+    if (mode === "inspect") {
+      return new Response(
+        JSON.stringify({
+          inspected: true,
+          ...buildChoicePayload({ needsChoice: !quality.ok }),
+        }),
+        { status: 200, headers: { ...corsHeaders, "Content-Type": "application/json" } },
+      );
+    }
+
+    // Modo "auto" e qualidade ruim: tenta cascata automática (Firecrawl → Perplexity)
+    // sem precisar de novo clique do usuário.
+    if (mode === "auto" && !quality.ok && forceMethod !== "perplexity") {
+      // 1ª tentativa automática: Firecrawl, se conectado e ainda não usado
+      if (byProvider.firecrawl?.api_key && scrapeMethod !== "firecrawl") {
+        await tryFirecrawl();
+        quality = assessContentQuality(pageContent);
+      }
+      // 2ª tentativa automática: Perplexity, se conectada
+      if (!quality.ok && byProvider.perplexity?.api_key) {
+        await tryPerplexity();
+        quality = assessContentQuality(pageContent);
+      }
+
+      // Se ainda assim não atingiu qualidade mínima utilizável, devolve prévia + recomendação
+      if (!quality.usable) {
         return new Response(
-          JSON.stringify({
-            inspected: true,
-            ok: quality.ok,
-            quality,
-            scrapeMethod,
-            scrapeStatus,
-            scrapeBlocked,
-            scrapeReason,
-            preview: pageContent.slice(0, 600),
-            hasPerplexity: !!byProvider.perplexity?.api_key,
-            hasFirecrawl: !!byProvider.firecrawl?.api_key,
-          }),
-          { status: 200, headers: { ...corsHeaders, "Content-Type": "application/json" } },
-        );
-      } else {
-        // Auto sem perplexity disponível e qualidade ruim → erro com sugestões
-        return new Response(
-          JSON.stringify({
-            needsChoice: true,
-            errorCode: scrapeBlocked ? "SITE_BLOCKED" : "WEAK_CONTENT",
-            message: scrapeBlocked
-              ? `O site bloqueou a leitura automatizada (HTTP ${scrapeStatus || "?"}). Conecte Perplexity em Integrações para contornar, ou tente outro link.`
-              : `O conteúdo extraído ficou muito curto (${quality.chars} caracteres). Conecte Perplexity em Integrações ou tente outro link.`,
-            quality,
-            scrapeMethod,
-            scrapeStatus,
-            preview: pageContent.slice(0, 600),
-            hasPerplexity: false,
-            hasFirecrawl: !!byProvider.firecrawl?.api_key,
-            suggestions: [
-              { id: "connect-perplexity", label: "Conectar Perplexity em Integrações" },
-              { id: "change-url", label: "Usar outro link" },
-            ],
-          }),
+          JSON.stringify(buildChoicePayload()),
           { status: 200, headers: { ...corsHeaders, "Content-Type": "application/json" } },
         );
       }
