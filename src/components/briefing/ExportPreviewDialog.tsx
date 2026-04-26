@@ -1,11 +1,11 @@
-import { useEffect, useMemo, useState } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
 import {
   Dialog, DialogContent, DialogHeader, DialogTitle, DialogDescription,
 } from "@/components/ui/dialog";
 import { Button } from "@/components/ui/button";
 import { Tabs, TabsList, TabsTrigger, TabsContent } from "@/components/ui/tabs";
 import { ScrollArea } from "@/components/ui/scroll-area";
-import { Download, FileText, FileType, Loader2, Eye } from "lucide-react";
+import { Download, FileText, FileType, Loader2, Eye, Monitor, FileStack } from "lucide-react";
 import {
   exportBriefingMarkdown,
   exportBriefingDocx,
@@ -14,6 +14,8 @@ import {
   downloadMarkdown,
   type ExportFormat,
 } from "@/lib/exportBriefing";
+
+type DocLayout = "a4" | "responsive";
 
 type Props = {
   open: boolean;
@@ -40,6 +42,9 @@ export function ExportPreviewDialog({
   const [pdfLoading, setPdfLoading] = useState(false);
   const [docHtml, setDocHtml] = useState<string>("");
   const [mdContent, setMdContent] = useState<string>("");
+  const [docLayout, setDocLayout] = useState<DocLayout>("a4");
+  const [docHeight, setDocHeight] = useState<number>(1200);
+  const docIframeRef = useRef<HTMLIFrameElement>(null);
 
   // Reset on open / data change
   useEffect(() => {
@@ -94,6 +99,47 @@ export function ExportPreviewDialog({
   // Renderiza markdown como HTML simples (cabeçalhos, listas, tabelas, blockquote)
   const mdAsHtml = useMemo(() => renderMarkdownLite(mdContent), [mdContent]);
 
+  // Injeta CSS adicional no HTML do Word para a pré-visualização (modo A4 vs responsivo)
+  const docPreviewSrc = useMemo(() => {
+    if (!docHtml) return "";
+    const extra = docLayout === "a4"
+      ? `
+        <style>
+          html, body { background: #f3f4f6; }
+          body { margin: 0; padding: 0; }
+          /* Cada elemento marcado como page-break vira "fim de página" visual */
+          .cover, .toc { box-shadow: 0 2px 8px rgba(0,0,0,0.08); margin: 0 auto 20px; background: #fff; padding: 40pt 36pt; max-width: 21cm; min-height: 29.7cm; box-sizing: border-box; position: relative; }
+          .cover::after, .toc::after {
+            content: "— quebra de página —"; position: absolute; bottom: -18px; left: 0; right: 0;
+            text-align: center; font-size: 10px; color: #9ca3af; letter-spacing: 2px; text-transform: uppercase;
+          }
+          .block {
+            background: #fff; box-shadow: 0 2px 8px rgba(0,0,0,0.08);
+            margin: 0 auto 20px; padding: 36pt 36pt 40pt; max-width: 21cm;
+            box-sizing: border-box; page-break-inside: avoid;
+          }
+        </style>
+      `
+      : `
+        <style>
+          html, body { background: #fff; }
+          body { margin: 0; padding: 16px 20px; }
+          .cover, .toc, .block { max-width: 100%; padding: 16px 0; }
+          .cover { page-break-after: auto !important; border-bottom: 2px dashed #e5e7eb; padding-bottom: 28px; margin-bottom: 28px; }
+          .toc { border-bottom: 1px dashed #e5e7eb; padding-bottom: 16px; margin-bottom: 16px; }
+        </style>
+      `;
+    return docHtml.replace("</head>", `${extra}</head>`);
+  }, [docHtml, docLayout]);
+
+  // Auto-ajusta a altura do iframe ao conteúdo
+  const handleIframeLoad = () => {
+    const iframe = docIframeRef.current;
+    if (!iframe || !iframe.contentDocument) return;
+    const h = iframe.contentDocument.documentElement.scrollHeight;
+    setDocHeight(Math.max(800, h + 40));
+  };
+
   return (
     <Dialog open={open} onOpenChange={onOpenChange}>
       <DialogContent className="max-w-6xl p-0 gap-0 h-[90vh] flex flex-col">
@@ -136,24 +182,56 @@ export function ExportPreviewDialog({
               )}
             </TabsContent>
 
-            {/* DOC — renderiza o HTML em uma "página A4" simulada */}
-            <TabsContent value="doc" className="h-full m-0 data-[state=inactive]:hidden">
-              <ScrollArea className="h-full">
-                <div className="mx-auto my-6 max-w-[820px] px-4">
-                  <div className="bg-white text-foreground shadow-elevated rounded-md overflow-hidden">
-                    {/* Aplicamos o HTML completo do export — o iframe isolado evita conflito de CSS */}
-                    <iframe
-                      title="Pré-visualização Word"
-                      srcDoc={docHtml}
-                      className="w-full border-0"
-                      style={{ height: "1200px" }}
-                    />
-                  </div>
-                  <p className="text-center text-xs text-muted-foreground mt-3">
-                    O arquivo .doc abre no Word/Google Docs respeitando as mesmas quebras de página exibidas acima.
-                  </p>
+            {/* DOC — alterna entre A4 paginado e responsivo */}
+            <TabsContent value="doc" className="h-full m-0 data-[state=inactive]:hidden flex flex-col">
+              <div className="flex items-center justify-between gap-3 px-4 py-2 border-b bg-background flex-wrap">
+                <div className="flex items-center gap-1 rounded-md border bg-muted/40 p-0.5">
+                  <Button
+                    variant={docLayout === "a4" ? "default" : "ghost"}
+                    size="sm"
+                    className="h-7 px-3 text-xs"
+                    onClick={() => setDocLayout("a4")}
+                  >
+                    <FileStack className="mr-1.5 h-3.5 w-3.5" />
+                    1 página A4
+                  </Button>
+                  <Button
+                    variant={docLayout === "responsive" ? "default" : "ghost"}
+                    size="sm"
+                    className="h-7 px-3 text-xs"
+                    onClick={() => setDocLayout("responsive")}
+                  >
+                    <Monitor className="mr-1.5 h-3.5 w-3.5" />
+                    Responsivo
+                  </Button>
                 </div>
-              </ScrollArea>
+                <p className="text-xs text-muted-foreground">
+                  {docLayout === "a4"
+                    ? "Cada página A4 (21×29,7cm) aparece separada por marcadores de quebra."
+                    : "Layout fluido sem páginas fixas — útil para revisar o conteúdo corrido."}
+                </p>
+              </div>
+              <div className={`flex-1 min-h-0 ${docLayout === "a4" ? "bg-muted/40" : "bg-background"}`}>
+                <ScrollArea className="h-full">
+                  <div className={docLayout === "a4" ? "py-6" : ""}>
+                    <iframe
+                      ref={docIframeRef}
+                      title="Pré-visualização Word"
+                      srcDoc={docPreviewSrc}
+                      onLoad={handleIframeLoad}
+                      className="border-0 block mx-auto bg-white"
+                      style={{
+                        width: docLayout === "a4" ? "calc(21cm + 24px)" : "100%",
+                        maxWidth: "100%",
+                        height: `${docHeight}px`,
+                      }}
+                    />
+                    <p className="text-center text-xs text-muted-foreground mt-3 px-4">
+                      O arquivo .doc abre no Word/Google Docs respeitando as quebras de página da visualização A4.
+                    </p>
+                  </div>
+                </ScrollArea>
+              </div>
             </TabsContent>
 
             {/* Markdown — preview renderizado + código fonte lado a lado */}

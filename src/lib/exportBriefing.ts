@@ -24,6 +24,20 @@ const v = (data: Record<string, string>, id: string) => {
   return val.length ? val : NA;
 };
 
+// Remove emojis e símbolos fora do BMP que o Helvetica do jsPDF não suporta
+// (renderiza como "Ø=ÜÑ", "&j", etc). Mantemos texto puro para o PDF.
+const stripEmojis = (s: string): string => {
+  if (!s) return s;
+  return s
+    // Remove sequências de emoji (Extended_Pictographic + variation selectors + ZWJ)
+    .replace(/[\u{1F000}-\u{1FFFF}]/gu, "")
+    .replace(/[\u{2600}-\u{27BF}]/gu, "")
+    .replace(/[\u{FE00}-\u{FE0F}]/gu, "") // variation selectors
+    .replace(/[\u{200D}]/gu, "")           // ZWJ
+    .replace(/\s{2,}/g, " ")
+    .trim();
+};
+
 const slugify = (s: string) =>
   s.toLowerCase().normalize("NFD").replace(/\p{Diacritic}/gu, "")
     .replace(/[^a-z0-9]+/g, "-").replace(/(^-|-$)/g, "");
@@ -447,7 +461,7 @@ export function exportBriefingPdf(
     doc.setFontSize(fontSize);
     setText(opts.color ?? PALETTE.ink);
     const w = opts.w ?? contentW;
-    const lines = doc.splitTextToSize(text, w);
+    const lines = doc.splitTextToSize(stripEmojis(text), w);
     const lineHeight = fontSize * 1.3;
     for (const line of lines) {
       ensureSpace(lineHeight);
@@ -481,17 +495,17 @@ export function exportBriefingPdf(
       writeWrapped(data.nicho, 13, { color: PALETTE.body, align: "center", lineGap: 8 });
     }
 
-    // pílula da estratégia
-    const stratLabel = strat ? `${strat.emoji} ${strat.name}` : "Estratégia não selecionada";
+    // pílula da estratégia (sem emoji — Helvetica não suporta)
+    const stratLabel = strat ? strat.name.toUpperCase() : "ESTRATÉGIA NÃO SELECIONADA";
     doc.setFont("helvetica", "bold");
     doc.setFontSize(10.5);
     const tw = doc.getTextWidth(stratLabel);
-    const padX = 14, padY = 7, pillW = tw + padX * 2, pillH = 22;
+    const padX = 16, pillW = tw + padX * 2, pillH = 24;
     const pillX = (pageW - pillW) / 2;
     setFill(strat ? PALETTE.brandSoft : [243, 244, 246]);
-    doc.roundedRect(pillX, y, pillW, pillH, 11, 11, "F");
+    doc.roundedRect(pillX, y, pillW, pillH, 12, 12, "F");
     setText(strat ? [30, 64, 175] : PALETTE.muted);
-    doc.text(stratLabel, pageW / 2, y + 14.5, { align: "center" });
+    doc.text(stratLabel, pageW / 2, y + 15.5, { align: "center" });
     y += pillH + 32;
 
     // barra de completude
@@ -529,48 +543,57 @@ export function exportBriefingPdf(
 
   // ── SUMÁRIO
   const drawToc = () => {
-    writeWrapped("📑 Sumário", 18, { bold: true, color: PALETTE.ink, lineGap: 8 });
+    writeWrapped("Sumário", 22, { bold: true, color: PALETTE.ink, lineGap: 4 });
     setDraw(PALETTE.brand);
-    doc.setLineWidth(1.2);
+    doc.setLineWidth(1.5);
     doc.line(margin, y, margin + 60, y);
-    y += 18;
+    y += 22;
 
     const blockLetters = ["A", "B", "C", "D", "E", "F"];
-    FIXED_SECTIONS.forEach((s, i) => {
-      ensureSpace(20);
-      // tag
-      const tag = `BLOCO ${blockLetters[i] ?? i + 1}`;
+    const drawTocLine = (tag: string, tagColor: [number, number, number], title: string) => {
+      ensureSpace(22);
+      // tag pill
       doc.setFont("helvetica", "bold");
-      doc.setFontSize(8.5);
-      setText(PALETTE.brand);
-      doc.text(tag, margin, y);
+      doc.setFontSize(8);
+      const tw = doc.getTextWidth(tag);
+      const padX = 6, tagW = tw + padX * 2, tagH = 14;
+      setFill(tagColor);
+      doc.roundedRect(margin, y - 10, tagW, tagH, 2, 2, "F");
+      setText([255, 255, 255]);
+      doc.text(tag, margin + padX, y);
       // título
       doc.setFont("helvetica", "normal");
       doc.setFontSize(11);
       setText(PALETTE.ink);
-      doc.text(s.title, margin + 70, y);
-      y += 18;
+      doc.text(stripEmojis(title), margin + tagW + 10, y);
+      y += 20;
+    };
+
+    FIXED_SECTIONS.forEach((s, i) => {
+      drawTocLine(`BLOCO ${blockLetters[i] ?? i + 1}`, PALETTE.brand, s.title);
     });
     if (strat) {
-      ensureSpace(20);
-      doc.setFont("helvetica", "bold");
-      doc.setFontSize(8.5);
-      setText(PALETTE.ok);
-      doc.text("ESTRATÉGIA", margin, y);
-      doc.setFont("helvetica", "normal");
-      doc.setFontSize(11);
-      setText(PALETTE.ink);
-      doc.text(`${strat.emoji} ${strat.name}`, margin + 70, y);
-      y += 18;
+      drawTocLine("ESTRATÉGIA", PALETTE.ok, strat.name);
     }
     doc.addPage();
     y = margin;
   };
 
   // ── Cabeçalho de bloco (faixa colorida + tag)
-  const writeBlockHeader = (letter: string, title: string, color: [number, number, number] = PALETTE.brand) => {
-    ensureSpace(48);
-    y += 6;
+  // forceNewPage: força bloco a começar em nova página (evita títulos órfãos)
+  const writeBlockHeader = (
+    letter: string,
+    title: string,
+    color: [number, number, number] = PALETTE.brand,
+    forceNewPage = false,
+  ) => {
+    if (forceNewPage && y > margin + 4) {
+      doc.addPage();
+      y = margin;
+    } else {
+      ensureSpace(56);
+    }
+    y += 4;
 
     // tag
     doc.setFont("helvetica", "bold");
@@ -587,7 +610,7 @@ export function exportBriefingPdf(
     setText(PALETTE.ink);
     doc.setFont("helvetica", "bold");
     doc.setFontSize(15);
-    doc.text(title, margin + tagW + 10, y + 12);
+    doc.text(stripEmojis(title), margin + tagW + 10, y + 12);
     y += tagH + 8;
 
     // linha base
@@ -597,24 +620,25 @@ export function exportBriefingPdf(
     y += 14;
   };
 
-  // ── Sub-cabeçalho (para estratégia.sections)
+  // ── Sub-cabeçalho (para estratégia.sections) — mantém junto com o conteúdo seguinte
   const writeSubHeader = (text: string) => {
-    ensureSpace(22);
-    y += 4;
+    // Garante espaço para o subtítulo + ao menos 2 linhas de conteúdo (≈ 60pt)
+    ensureSpace(60);
+    y += 6;
     setText([30, 64, 175]);
     doc.setFont("helvetica", "bold");
-    doc.setFontSize(11.5);
-    doc.text(text, margin, y);
-    y += 8;
+    doc.setFontSize(12);
+    doc.text(stripEmojis(text), margin, y);
+    y += 10;
     setDraw(PALETTE.rule);
     doc.setLineWidth(0.5);
     doc.line(margin, y, pageW - margin, y);
-    y += 10;
+    y += 12;
   };
 
   // ── Caixa de "Descrição"
   const drawCallout = (label: string, value: string) => {
-    const text = (value ?? "").trim();
+    const text = stripEmojis((value ?? "").trim());
     const display = text || "Não preenchido";
     doc.setFont("helvetica", "normal");
     doc.setFontSize(10.5);
@@ -642,14 +666,15 @@ export function exportBriefingPdf(
     let ty = boxY + 28;
     for (const ln of lines) { doc.text(ln, boxX + 12, ty); ty += lineH; }
 
-    y = boxY + innerH + 10;
+    y = boxY + innerH + 12;
   };
 
-  // ── Linha "label / valor"
+  // ── Linha "label / valor" (mantém label + ao menos 1 linha juntos)
   const writeKV = (label: string, value: string) => {
-    const text = (value ?? "").trim();
+    const text = stripEmojis((value ?? "").trim());
     const display = text || "Não preenchido";
-    ensureSpace(18);
+    // Reserva espaço mínimo: label (12pt) + 1 linha de texto (13pt) + spacing
+    ensureSpace(34);
     setText(PALETTE.muted);
     doc.setFont("helvetica", "bold");
     doc.setFontSize(8.5);
@@ -662,35 +687,36 @@ export function exportBriefingPdf(
     const lines = doc.splitTextToSize(display, contentW);
     const lh = 13;
     for (const ln of lines) { ensureSpace(lh); doc.text(ln, margin, y); y += lh; }
-    y += 8;
+    y += 10;
   };
 
-  // ── Lista numerada (Dores/Desejos/Objeções)
-  const writeNumberedList = (heading: string, ids: string[]) => {
-    ensureSpace(20);
-    setText(PALETTE.body);
+  // ── Lista numerada (Dores/Desejos/Objeções) — usa marcador colorido em vez de emoji
+  const writeNumberedList = (heading: string, ids: string[], accent: [number, number, number] = PALETTE.brand) => {
+    ensureSpace(36);
+    // marcador colorido + texto do heading
+    setFill(accent);
+    doc.roundedRect(margin, y - 8, 4, 12, 2, 2, "F");
+    setText(PALETTE.ink);
     doc.setFont("helvetica", "bold");
-    doc.setFontSize(10.5);
-    doc.text(heading, margin, y);
-    y += 14;
+    doc.setFontSize(11);
+    doc.text(stripEmojis(heading), margin + 10, y);
+    y += 16;
 
     ids.forEach((id, idx) => {
-      const text = (data[id] ?? "").trim();
+      const text = stripEmojis((data[id] ?? "").trim());
       const display = text || "Não preenchido";
       const num = `${idx + 1}.`;
       doc.setFont("helvetica", "bold");
       doc.setFontSize(10);
-      setText(PALETTE.brand);
       const numW = doc.getTextWidth(num) + 6;
 
       doc.setFont("helvetica", text ? "normal" : "italic");
       doc.setFontSize(10);
-      setText(text ? PALETTE.ink : PALETTE.faint);
       const lines = doc.splitTextToSize(display, contentW - numW);
       const lh = 13;
       ensureSpace(lh);
       // número
-      setText(PALETTE.brand);
+      setText(accent);
       doc.setFont("helvetica", "bold");
       doc.text(num, margin, y);
       // texto
@@ -702,27 +728,28 @@ export function exportBriefingPdf(
         ensureSpace(lh);
         doc.text(lines[i], margin + numW, y); y += lh;
       }
+      y += 2;
     });
-    y += 6;
+    y += 8;
   };
 
-  // ── Mapa da Empatia em grade 3x2 com cards coloridos
+  // ── Mapa da Empatia em grade 3x2 com cards coloridos (sem emojis)
   const drawEmpathyGrid = () => {
     const quads: Array<{
-      id: string; emoji: string; label: string; fill: [number, number, number]; border: [number, number, number]; titleColor: [number, number, number];
+      id: string; label: string; fill: [number, number, number]; border: [number, number, number]; titleColor: [number, number, number];
     }> = [
-      { id: "me_pensaSente", emoji: "🧠", label: "Pensa & Sente", fill: [238, 242, 255], border: [199, 210, 254], titleColor: [67, 56, 202] },
-      { id: "me_ve",         emoji: "👀", label: "Vê",            fill: [236, 253, 245], border: [167, 243, 208], titleColor: [4, 120, 87] },
-      { id: "me_ouve",       emoji: "👂", label: "Ouve",          fill: [255, 247, 237], border: [254, 215, 170], titleColor: [194, 65, 12] },
-      { id: "me_falaFaz",    emoji: "💬", label: "Fala & Faz",    fill: [243, 244, 246], border: [209, 213, 219], titleColor: [55, 65, 81] },
-      { id: "me_dores",      emoji: "😣", label: "Dores",         fill: [254, 242, 242], border: [254, 202, 202], titleColor: [185, 28, 28] },
-      { id: "me_ganhos",     emoji: "🏆", label: "Ganhos",        fill: [239, 246, 255], border: [191, 219, 254], titleColor: [29, 78, 216] },
+      { id: "me_pensaSente", label: "Pensa & Sente", fill: [238, 242, 255], border: [199, 210, 254], titleColor: [67, 56, 202] },
+      { id: "me_ve",         label: "Vê",            fill: [236, 253, 245], border: [167, 243, 208], titleColor: [4, 120, 87] },
+      { id: "me_ouve",       label: "Ouve",          fill: [255, 247, 237], border: [254, 215, 170], titleColor: [194, 65, 12] },
+      { id: "me_falaFaz",    label: "Fala & Faz",    fill: [243, 244, 246], border: [209, 213, 219], titleColor: [55, 65, 81] },
+      { id: "me_dores",      label: "Dores",         fill: [254, 242, 242], border: [254, 202, 202], titleColor: [185, 28, 28] },
+      { id: "me_ganhos",     label: "Ganhos",        fill: [239, 246, 255], border: [191, 219, 254], titleColor: [29, 78, 216] },
     ];
 
     const gap = 8;
     const cardW = (contentW - gap * 2) / 3;
     const cardPad = 10;
-    const titleH = 14;
+    const titleH = 16;
 
     // Calcular alturas de cada card baseado no conteúdo
     doc.setFont("helvetica", "normal");
@@ -732,16 +759,20 @@ export function exportBriefingPdf(
       let maxH = 0;
       for (let col = 0; col < 3; col++) {
         const q = quads[row * 3 + col];
-        const text = (data[q.id] ?? "").trim() || "Não preenchido";
+        const text = stripEmojis((data[q.id] ?? "").trim()) || "Não preenchido";
         const lines = doc.splitTextToSize(text, cardW - cardPad * 2);
         const h = titleH + lines.length * 11 + cardPad * 2;
         if (h > maxH) maxH = h;
       }
-      rowsHeights.push(Math.max(maxH, 70));
+      rowsHeights.push(Math.max(maxH, 80));
     }
 
     const totalH = rowsHeights[0] + rowsHeights[1] + gap;
-    ensureSpace(totalH + 4);
+    // Se não couber, força nova página para manter o grid intacto
+    if (y + totalH + 4 > pageH - margin - 32) {
+      doc.addPage();
+      y = margin;
+    }
 
     let cy = y;
     for (let row = 0; row < 2; row++) {
@@ -749,7 +780,7 @@ export function exportBriefingPdf(
       for (let col = 0; col < 3; col++) {
         const q = quads[row * 3 + col];
         const cx = margin + col * (cardW + gap);
-        const text = (data[q.id] ?? "").trim();
+        const text = stripEmojis((data[q.id] ?? "").trim());
         const display = text || "Não preenchido";
 
         // card
@@ -758,23 +789,27 @@ export function exportBriefingPdf(
         doc.setLineWidth(0.5);
         doc.roundedRect(cx, cy, cardW, rowH, 4, 4, "FD");
 
+        // bullet colorido (substitui emoji)
+        setFill(q.titleColor);
+        doc.circle(cx + cardPad + 2.5, cy + cardPad + 3.5, 2.5, "F");
+
         // título
         setText(q.titleColor);
         doc.setFont("helvetica", "bold");
         doc.setFontSize(8.5);
-        doc.text(`${q.emoji}  ${q.label.toUpperCase()}`, cx + cardPad, cy + cardPad + 6);
+        doc.text(q.label.toUpperCase(), cx + cardPad + 10, cy + cardPad + 6);
 
         // texto
         setText(text ? PALETTE.ink : PALETTE.faint);
         doc.setFont("helvetica", text ? "normal" : "italic");
         doc.setFontSize(9);
         const lines = doc.splitTextToSize(display, cardW - cardPad * 2);
-        let ty = cy + cardPad + titleH + 6;
+        let ty = cy + cardPad + titleH + 4;
         for (const ln of lines) { doc.text(ln, cx + cardPad, ty); ty += 11; }
       }
       cy += rowH + gap;
     }
-    y = cy + 6;
+    y = cy + 8;
   };
 
   // ============================================================
@@ -785,13 +820,14 @@ export function exportBriefingPdf(
 
   const blockLetters = ["A", "B", "C", "D", "E", "F"];
   FIXED_SECTIONS.forEach((s, i) => {
-    writeBlockHeader(blockLetters[i] ?? `${i + 1}`, s.title, PALETTE.brand);
+    // Cada bloco principal começa em nova página → diagramação consistente, sem títulos órfãos
+    writeBlockHeader(blockLetters[i] ?? `${i + 1}`, s.title, PALETTE.brand, true);
 
     if (s.id === "avatar") {
       drawCallout("Descrição do Avatar", data.descricaoAvatar ?? "");
-      writeNumberedList("😣 Dores", ["dor1", "dor2", "dor3"]);
-      writeNumberedList("🎯 Desejos", ["desejo1", "desejo2", "desejo3"]);
-      writeNumberedList("🛡 Objeções", ["objecao1", "objecao2", "objecao3"]);
+      writeNumberedList("Dores", ["dor1", "dor2", "dor3"], [185, 28, 28]);
+      writeNumberedList("Desejos", ["desejo1", "desejo2", "desejo3"], [22, 163, 74]);
+      writeNumberedList("Objeções", ["objecao1", "objecao2", "objecao3"], [217, 119, 6]);
       writeKV("Nível de Consciência", data.nivelConsciencia ?? "");
       writeKV("Canais Online", data.canaisOnline ?? "");
       writeKV("Resumo do Mapa da Empatia", data.empatiaResumo ?? "");
@@ -804,7 +840,8 @@ export function exportBriefingPdf(
   });
 
   if (strat) {
-    writeBlockHeader(strat.emoji, `${strat.name} — Detalhamento`, PALETTE.ok);
+    // Letra "E" para "Estratégia" (sem emoji)
+    writeBlockHeader("E", `${strat.name} — Detalhamento`, PALETTE.ok, true);
     strat.sections.forEach((sec) => {
       writeSubHeader(sec.title);
       const fields = sec.groups.flatMap((g) => g.fields ?? []);
@@ -823,7 +860,7 @@ export function exportBriefingPdf(
     setText(PALETTE.muted);
     doc.setFont("helvetica", "normal");
     doc.setFontSize(8);
-    const left = data.nomeProduto || "Briefing";
+    const left = stripEmojis(data.nomeProduto || "Briefing");
     doc.text(left, margin, pageH - 18);
     const right = `${p - 1} / ${pageCount - 1}`;
     doc.text(right, pageW - margin, pageH - 18, { align: "right" });
