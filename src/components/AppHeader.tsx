@@ -1,5 +1,5 @@
 import { Link, useNavigate } from "react-router-dom";
-import { ClipboardList, LogOut, Shield, LayoutDashboard } from "lucide-react";
+import { ClipboardList, LogOut, Shield, LayoutDashboard, Plug } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { useAuth } from "@/contexts/AuthContext";
 import { useUserRole } from "@/hooks/useUserRole";
@@ -51,6 +51,9 @@ export const AppHeader = ({ children }: { children?: React.ReactNode }) => {
               <DropdownMenuSeparator />
               <DropdownMenuItem onClick={() => navigate("/dashboard")}>
                 <LayoutDashboard className="mr-2 h-4 w-4" /> Meus briefings
+              </DropdownMenuItem>
+              <DropdownMenuItem onClick={() => navigate("/integrations")}>
+                <Plug className="mr-2 h-4 w-4" /> Integrações de IA
               </DropdownMenuItem>
               {isAdmin && (
                 <DropdownMenuItem onClick={() => navigate("/admin")}>
