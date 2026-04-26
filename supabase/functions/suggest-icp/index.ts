@@ -24,12 +24,13 @@ const ICP_FIELDS: Record<string, string> = {
   nivelConsciencia: "Uma destas: Inconsciente | Consciente do problema | Consciente da solução | Consciente do produto | Mais consciente.",
   canaisOnline: "Canais online onde o ICP está presente (Instagram, YouTube, podcasts, comunidades).",
   empatiaResumo: "Síntese curta (2-3 frases) do mapa da empatia.",
-  me_pensaSente: "PENSA E SENTE — preocupações reais, sonhos, crenças limitantes, sentimentos não-ditos. Mínimo 3 frases concretas.",
-  me_ve: "VÊ — concorrentes, anúncios, estilo de vida ao redor, ofertas a que está exposto. Mínimo 3 itens.",
-  me_ouve: "OUVE — família, amigos, gurus, podcasts, comunidades; tom (apoio/pressão/ruído). Mínimo 3 fontes.",
-  me_falaFaz: "FALA E FAZ — comportamento público vs. privado, hábitos, contradições. Mínimo 3 comportamentos.",
-  me_dores: "DORES — medos, frustrações, obstáculos (tempo/dinheiro/conhecimento), riscos percebidos. Mínimo 4 itens.",
-  me_ganhos: "GANHOS — desejos profundos + métricas concretas de sucesso (tangíveis e intangíveis). Mínimo 4 itens.",
+  // Mapa da empatia (Xplane/Dave Gray) — 6 quadrantes canônicos com perguntas-guia.
+  me_ve: "VÊ — estímulos visuais do cotidiano. Como é o mundo dele? Como são seus amigos? O que vê os concorrentes oferecendo? Que conteúdos consome? Que ofertas aparecem na frente dele? Mínimo 3 itens concretos.",
+  me_ouve: "OUVE — vozes e influências. Quem o influencia (família, amigos, chefe, ídolos)? Marcas favoritas? Produtos de comunicação que consome (podcasts, canais, comunidades)? Indique apoio, pressão ou ruído. Mínimo 3 fontes.",
+  me_pensaSente: "PENSA E SENTE — mundo interior. Como se sente em relação ao mundo? Preocupações? Sonhos e aspirações? Crenças limitantes? Inclua sentimentos que NÃO admite em voz alta. Mínimo 3 frases concretas.",
+  me_falaFaz: "FALA E FAZ — atitude pública (discurso x prática). Sobre o que costuma falar? Como age? Como se apresenta? Hobbies? Contradições entre o que diz e o que faz. Mínimo 3 comportamentos.",
+  me_dores: "DORES — dúvidas e obstáculos para consumir a solução. Do que tem medo? Frustrações? Obstáculos (tempo/dinheiro/conhecimento/suporte/autoestima)? Riscos percebidos na decisão. Mínimo 4 itens.",
+  me_ganhos: "GANHOS / NECESSIDADES — critérios de sucesso. O que é sucesso para ele? Onde quer chegar? O que acabaria com seus problemas? Inclua tangíveis (dinheiro, tempo, métricas) e intangíveis (orgulho, reconhecimento). Mínimo 4 itens.",
 };
 
 function buildToolSchema() {

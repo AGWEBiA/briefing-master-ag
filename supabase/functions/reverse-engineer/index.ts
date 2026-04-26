@@ -35,14 +35,14 @@ const FIELD_DESCRIPTIONS: Record<string, string> = {
   nivelConsciencia: "Uma destas: Inconsciente | Consciente do problema | Consciente da solução | Consciente do produto | Mais consciente.",
   canaisOnline: "Canais online onde o avatar está (ex.: Instagram, YouTube).",
   empatiaResumo: "Síntese curta do mapa da empatia do avatar.",
-  // Mapa da empatia
-  // Mapa da empatia (preencha cada quadrante com no mínimo 3-4 frases concretas)
-  me_pensaSente: "PENSA E SENTE — mundo interior do avatar: preocupações reais, sonhos, aspirações, crenças limitantes, sentimentos que ele NÃO admite em voz alta. Mínimo 3 frases concretas. Não use generalidades.",
-  me_ve: "VÊ — ambiente visual: o que o avatar enxerga no mercado e ao redor (concorrentes faturando, anúncios, estilo de vida de amigos, ofertas a que está exposto). Mínimo 3 itens concretos.",
-  me_ouve: "OUVE — vozes que influenciam: o que dizem família, amigos, chefe, parceiro, gurus, podcasts, comunidades. Cite os tipos de fontes e o teor (apoio, pressão, ruído). Mínimo 3 fontes.",
-  me_falaFaz: "FALA E FAZ — comportamento público vs. privado: o que posta, o que consome, hábitos diários, contradições entre o que diz e o que faz. Mínimo 3 comportamentos específicos.",
-  me_dores: "DORES — medos concretos, frustrações recorrentes, obstáculos reais (tempo, dinheiro, conhecimento, suporte) e riscos percebidos ao tomar a decisão de compra. Mínimo 4 itens.",
-  me_ganhos: "GANHOS — desejos profundos + métricas concretas de sucesso (números, prazos, status). Inclua ganhos tangíveis (dinheiro, tempo) e intangíveis (orgulho, reconhecimento). Mínimo 4 itens.",
+  // Mapa da empatia (Xplane/Dave Gray) — 6 quadrantes canônicos.
+  // Cada quadrante deve trazer 3-4 itens concretos respondendo às perguntas-guia clássicas.
+  me_ve: "VÊ — estímulos visuais do cotidiano. Responder: Como é o mundo em que vive? Como são seus amigos? O que enxerga concorrentes oferecendo? Que conteúdos consome (TV, redes, sites, podcasts)? Que ofertas aparecem na frente dele? Mínimo 3 itens concretos do ambiente pessoal E profissional.",
+  me_ouve: "OUVE — vozes e influências (não só som). Responder: Quem o influencia (família, amigos, chefe, ídolos, líderes religiosos)? Quais marcas favoritas? Quais produtos de comunicação consome (podcasts, canais, comunidades)? Indique o teor: apoio, pressão ou ruído. Mínimo 3 fontes diferentes.",
+  me_pensaSente: "PENSA E SENTE — mundo interior. Responder: Como se sente em relação ao mundo? Quais suas preocupações reais? Quais seus sonhos e aspirações? Que crenças limitantes carrega? Inclua sentimentos que NÃO admite em voz alta. Mínimo 3 frases concretas, sem generalidades.",
+  me_falaFaz: "FALA E FAZ — atitude pública e comportamento (discurso x prática). Responder: Sobre o que costuma falar? Como age no dia a dia? Como se veste/se apresenta? Quais hobbies? Onde há contradição entre o que diz e o que faz? Mínimo 3 comportamentos específicos.",
+  me_dores: "DORES — dúvidas e obstáculos para consumir a solução. Responder: Do que tem medo? Quais maiores frustrações hoje? Que obstáculos precisa superar (tempo, dinheiro, conhecimento, suporte, autoestima)? Que riscos percebe na decisão de compra? Mínimo 4 itens concretos.",
+  me_ganhos: "GANHOS / NECESSIDADES — critérios de sucesso. Responder: O que é sucesso para ele? Onde quer chegar? O que acabaria com seus problemas? Inclua ganhos tangíveis (dinheiro, tempo, métricas com prazo) e intangíveis (orgulho, status, reconhecimento). Mínimo 4 itens.",
   // Posicionamento
   nomeExpert: "Nome do expert/produtor.",
   audienciaAtual: "Tamanho/origem da audiência atual.",
