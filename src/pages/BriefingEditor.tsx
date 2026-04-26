@@ -252,6 +252,8 @@ const BriefingEditor = () => {
     setHighlightFields(new Set(filledKeys));
     toast.success(`${filledKeys.length} campo(s) da estratégia preenchido(s) pela IA.`);
   };
+
+  if (loading) {
     return (
       <div className="flex min-h-screen items-center justify-center">
         <Loader2 className="h-6 w-6 animate-spin text-primary" />
