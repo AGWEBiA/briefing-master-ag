@@ -391,7 +391,8 @@ Deno.serve(async (req) => {
 
     // 1) Scrape — segue forceMethod quando informado
     let pageContent = "";
-    let scrapeMethod: "firecrawl" | "fetch" | "perplexity-fallback" = "fetch";
+    type ScrapeMethod = "firecrawl" | "fetch" | "perplexity-fallback";
+    let scrapeMethod: ScrapeMethod = "fetch";
     let scrapeStatus = 0;
     let scrapeBlocked = false;
     let scrapeReason: string | undefined;
