@@ -1,5 +1,5 @@
 import { useEffect, useState } from "react";
-import { Link as LinkIcon, Loader2, Sparkles, Wand2 } from "lucide-react";
+import { AlertTriangle, Link as LinkIcon, Loader2, RefreshCw, Sparkles, Wand2 } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import {
   Dialog, DialogContent, DialogDescription, DialogFooter,
@@ -18,6 +18,16 @@ import { supabase } from "@/integrations/supabase/client";
 import { useAuth } from "@/contexts/AuthContext";
 
 type Engine = "lovable" | "openai" | "gemini";
+type ForceMethod = "fetch" | "firecrawl" | "perplexity";
+
+interface ChoicePayload {
+  errorCode: "SITE_BLOCKED" | "WEAK_CONTENT" | "EMPTY_CONTENT" | "INVALID_URL";
+  message: string;
+  preview: string;
+  hasPerplexity: boolean;
+  hasFirecrawl: boolean;
+  scrapeStatus?: number;
+}
 
 interface Props {
   onApply: (data: Record<string, string>) => void;
@@ -30,12 +40,14 @@ export const ReverseEngineerDialog = ({ onApply, trigger }: Props) => {
   const [url, setUrl] = useState("");
   const [engine, setEngine] = useState<Engine>("lovable");
   const [running, setRunning] = useState(false);
+  const [choice, setChoice] = useState<ChoicePayload | null>(null);
   const [available, setAvailable] = useState<{ openai: boolean; gemini: boolean; perplexity: boolean; firecrawl: boolean }>({
     openai: false, gemini: false, perplexity: false, firecrawl: false,
   });
 
   useEffect(() => {
     if (!open || !user) return;
+    setChoice(null);
     (async () => {
       const { data } = await supabase
         .from("ai_integrations")
@@ -47,7 +59,7 @@ export const ReverseEngineerDialog = ({ onApply, trigger }: Props) => {
     })();
   }, [open, user]);
 
-  const run = async () => {
+  const run = async (forceMethod?: ForceMethod) => {
     if (!/^https?:\/\//i.test(url)) {
       toast.error("Informe uma URL válida (http/https).");
       return;
@@ -62,8 +74,9 @@ export const ReverseEngineerDialog = ({ onApply, trigger }: Props) => {
     }
 
     setRunning(true);
+    setChoice(null);
     const { data, error } = await supabase.functions.invoke("reverse-engineer", {
-      body: { url, engine },
+      body: { url, engine, mode: forceMethod ? "run" : "auto", forceMethod },
     });
     setRunning(false);
 
@@ -72,8 +85,20 @@ export const ReverseEngineerDialog = ({ onApply, trigger }: Props) => {
       toast.error(msg);
       return;
     }
+
+    // Conteúdo fraco / site bloqueado → mostra opções
+    if (data?.needsChoice) {
+      setChoice(data as ChoicePayload);
+      return;
+    }
+
     if (data?.error) {
-      toast.error(data.error);
+      const code = data.errorCode;
+      if (code === "SITE_BLOCKED") {
+        toast.error("Site bloqueou a leitura automatizada. Tente com Perplexity ou outro link.");
+      } else {
+        toast.error(data.error);
+      }
       return;
     }
     if (!data?.data || Object.keys(data.data).length === 0) {
@@ -88,6 +113,7 @@ export const ReverseEngineerDialog = ({ onApply, trigger }: Props) => {
     setOpen(false);
     setUrl("");
   };
+
 
   return (
     <Dialog open={open} onOpenChange={setOpen}>
@@ -150,11 +176,62 @@ export const ReverseEngineerDialog = ({ onApply, trigger }: Props) => {
               <Link to="/integrations" className="text-primary underline">Gerenciar integrações</Link>
             </AlertDescription>
           </Alert>
+
+          {choice && (
+            <Alert variant="destructive" className="border-warning/40 bg-warning/10 text-foreground">
+              <AlertTriangle className="h-4 w-4" />
+              <AlertDescription className="space-y-3">
+                <div>
+                  <p className="font-medium">
+                    {choice.errorCode === "SITE_BLOCKED"
+                      ? `Site bloqueou a leitura${choice.scrapeStatus ? ` (HTTP ${choice.scrapeStatus})` : ""}`
+                      : "Conteúdo extraído insuficiente"}
+                  </p>
+                  <p className="text-xs text-muted-foreground mt-1">{choice.message}</p>
+                </div>
+                {choice.preview && (
+                  <details className="text-xs">
+                    <summary className="cursor-pointer text-muted-foreground hover:text-foreground">
+                      Ver prévia do conteúdo extraído
+                    </summary>
+                    <pre className="mt-2 max-h-32 overflow-auto rounded bg-muted/50 p-2 text-[11px] whitespace-pre-wrap">
+                      {choice.preview || "(vazio)"}
+                    </pre>
+                  </details>
+                )}
+                <div className="flex flex-wrap gap-2">
+                  {choice.hasPerplexity ? (
+                    <Button
+                      type="button"
+                      size="sm"
+                      onClick={() => run("perplexity")}
+                      disabled={running}
+                    >
+                      <RefreshCw className="mr-2 h-3.5 w-3.5" />
+                      Tentar com Perplexity
+                    </Button>
+                  ) : (
+                    <Button type="button" size="sm" variant="outline" asChild>
+                      <Link to="/integrations">Conectar Perplexity</Link>
+                    </Button>
+                  )}
+                  <Button
+                    type="button"
+                    size="sm"
+                    variant="outline"
+                    onClick={() => { setChoice(null); setUrl(""); }}
+                  >
+                    Usar outro link
+                  </Button>
+                </div>
+              </AlertDescription>
+            </Alert>
+          )}
         </div>
 
         <DialogFooter>
           <Button variant="ghost" onClick={() => setOpen(false)} disabled={running}>Cancelar</Button>
-          <Button onClick={run} disabled={running || !url}>
+          <Button onClick={() => run()} disabled={running || !url}>
             {running ? <Loader2 className="mr-2 h-4 w-4 animate-spin" /> : <Wand2 className="mr-2 h-4 w-4" />}
             {running ? "Analisando..." : "Preencher briefing"}
           </Button>

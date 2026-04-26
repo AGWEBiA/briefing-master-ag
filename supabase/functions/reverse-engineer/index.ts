@@ -104,18 +104,42 @@ async function scrapeWithFirecrawl(url: string, apiKey: string): Promise<string>
   return (data?.data?.markdown ?? data?.markdown ?? "").slice(0, 20000);
 }
 
-async function scrapeBasic(url: string): Promise<string> {
-  const r = await fetch(url, {
-    redirect: "follow",
-    headers: {
-      "User-Agent":
-        "Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/124.0 Safari/537.36",
-      "Accept":
-        "text/html,application/xhtml+xml,application/xml;q=0.9,image/avif,image/webp,*/*;q=0.8",
-      "Accept-Language": "pt-BR,pt;q=0.9,en;q=0.8",
-    },
-  });
-  if (!r.ok) throw new Error(`HTTP ${r.status} ao buscar a URL`);
+interface ScrapeOutcome {
+  content: string;
+  status: number;
+  blocked: boolean;
+  reason?: string;
+}
+
+async function scrapeBasic(url: string): Promise<ScrapeOutcome> {
+  let r: Response;
+  try {
+    r = await fetch(url, {
+      redirect: "follow",
+      headers: {
+        "User-Agent":
+          "Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/124.0 Safari/537.36",
+        "Accept":
+          "text/html,application/xhtml+xml,application/xml;q=0.9,image/avif,image/webp,*/*;q=0.8",
+        "Accept-Language": "pt-BR,pt;q=0.9,en;q=0.8",
+      },
+    });
+  } catch (e) {
+    return { content: "", status: 0, blocked: true, reason: `Falha de rede: ${(e as Error).message}` };
+  }
+
+  if (!r.ok) {
+    const blocked = [401, 403, 429, 503].includes(r.status);
+    return {
+      content: "",
+      status: r.status,
+      blocked,
+      reason: blocked
+        ? `O site bloqueou o acesso automatizado (HTTP ${r.status}).`
+        : `HTTP ${r.status} ao buscar a URL.`,
+    };
+  }
+
   const html = await r.text();
 
   const pick = (re: RegExp) => {
@@ -128,14 +152,12 @@ async function scrapeBasic(url: string): Promise<string> {
     || pick(/<meta[^>]+property=["']og:description["'][^>]+content=["']([^"']+)["']/i);
   const ogTitle = pick(/<meta[^>]+property=["']og:title["'][^>]+content=["']([^"']+)["']/i);
 
-  // Tenta extrair <main> ou <article>; cai para <body>
   const mainMatch =
     html.match(/<main[\s\S]*?<\/main>/i) ||
     html.match(/<article[\s\S]*?<\/article>/i) ||
     html.match(/<body[\s\S]*?<\/body>/i);
   const mainHtml = mainMatch ? mainMatch[0] : html;
 
-  // Cabeçalhos (h1-h3) preservados como pistas estruturais
   const headings = Array.from(mainHtml.matchAll(/<h([1-3])[^>]*>([\s\S]*?)<\/h\1>/gi))
     .map((m) => `H${m[1]}: ${m[2].replace(/<[^>]+>/g, " ").replace(/\s+/g, " ").trim()}`)
     .filter((s) => s.length > 4)
@@ -158,8 +180,19 @@ async function scrapeBasic(url: string): Promise<string> {
     (headings ? `## Estrutura da página\n${headings}\n\n` : "") +
     `## Conteúdo\n${body}`;
 
-  return composed.slice(0, 20000);
+  return { content: composed.slice(0, 20000), status: r.status, blocked: false };
 }
+
+// Heurística de qualidade do conteúdo raspado.
+function assessContentQuality(content: string): { ok: boolean; reason?: string; chars: number } {
+  const chars = content.trim().length;
+  if (chars < 300) return { ok: false, chars, reason: "Conteúdo muito curto (provável SPA ou bloqueio)." };
+  // Conteúdo sem nenhuma palavra com mais de 4 letras é suspeito
+  const words = content.match(/[A-Za-zÀ-ÿ]{4,}/g) ?? [];
+  if (words.length < 40) return { ok: false, chars, reason: "Conteúdo sem texto significativo." };
+  return { ok: true, chars };
+}
+
 
 async function researchWithPerplexity(
   pageContent: string,
@@ -167,20 +200,27 @@ async function researchWithPerplexity(
   apiKey: string,
   model = "sonar",
 ): Promise<{ content: string; citations: string[] }> {
-  // Etapa 1: extrair nicho/subnicho/público a partir da página
   const trimmed = pageContent.slice(0, 6000);
   const userQuery =
-    `Com base no conteúdo abaixo (extraído de ${url}), faça uma pesquisa aprofundada SOMENTE em fontes públicas verificáveis sobre o PÚBLICO-ALVO do produto.\n\n` +
-    `CONTEÚDO DA PÁGINA:\n"""\n${trimmed}\n"""\n\n` +
-    `INSTRUÇÕES OBRIGATÓRIAS:\n` +
-    `1. Identifique o NICHO e SUBNICHO do produto.\n` +
-    `2. Descreva o AVATAR (perfil demográfico/psicográfico) com base em fontes reais do nicho.\n` +
-    `3. Liste DORES, DESEJOS e OBJEÇÕES típicas desse público no subnicho identificado.\n` +
-    `4. Levante POSICIONAMENTO e DIFERENCIAIS de concorrentes diretos no mesmo subnicho.\n` +
-    `5. Inclua CANAIS ONLINE onde esse público se concentra.\n` +
-    `6. NÃO invente números, nomes próprios, depoimentos ou estatísticas. Se não houver fonte clara, escreva "não verificado".\n` +
-    `7. Cite as fontes ao final de cada bloco entre colchetes [URL].\n` +
-    `Formato: tópicos curtos e objetivos em português do Brasil.`;
+    `Tenho uma página de produto/infoproduto em ${url}. Use o conteúdo abaixo como ponto de partida e pesquise APENAS em fontes públicas verificáveis para mapear o PÚBLICO-ALVO, NICHO e SUBNICHO.\n\n` +
+    `=== CONTEÚDO DA PÁGINA ===\n"""\n${trimmed}\n"""\n\n` +
+    `=== O QUE EU PRECISO (responda em blocos numerados, em português do Brasil) ===\n` +
+    `1. NICHO e SUBNICHO — categoria de mercado e recorte específico do produto.\n` +
+    `2. PÚBLICO-ALVO PRIMÁRIO — perfil demográfico (faixa etária, gênero predominante, renda, escolaridade) e psicográfico (estilo de vida, valores, momento de carreira/vida). Cite a fonte de cada afirmação.\n` +
+    `3. DORES — 3 a 5 dores recorrentes desse público nesse subnicho, com fonte para cada uma.\n` +
+    `4. DESEJOS — 3 a 5 desejos/aspirações típicas, com fonte.\n` +
+    `5. OBJEÇÕES — 3 a 5 objeções comuns à compra de soluções no subnicho, com fonte.\n` +
+    `6. NÍVEL DE CONSCIÊNCIA dominante (escala de Eugene Schwartz: inconsciente → consciente do problema → da solução → do produto → mais consciente).\n` +
+    `7. CANAIS ONLINE — onde esse público se concentra (redes sociais, comunidades, podcasts, fóruns), com exemplos verificáveis.\n` +
+    `8. CONCORRENTES diretos no mesmo subnicho — 2 a 5 nomes verificáveis, com posicionamento e diferenciais.\n` +
+    `9. MAPA DA EMPATIA do avatar — preencha os 6 quadrantes (PENSA E SENTE / VÊ / OUVE / FALA E FAZ / DORES / GANHOS) baseando-se EXCLUSIVAMENTE no que foi pesquisado.\n\n` +
+    `=== REGRAS RÍGIDAS ANTI-ALUCINAÇÃO ===\n` +
+    `- NUNCA invente nomes próprios, depoimentos, números, percentuais, datas, preços ou estatísticas.\n` +
+    `- Se uma informação não estiver claramente em uma fonte pública, escreva literalmente "não verificado" naquele item.\n` +
+    `- Cite a fonte ao final de cada afirmação relevante usando [URL] entre colchetes.\n` +
+    `- NÃO repita literalmente o texto da página; use-o apenas como contexto para a pesquisa externa.\n` +
+    `- Se a página estiver vazia, em outro idioma ou inacessível, identifique o nicho a partir da URL e diga claramente quais blocos não puderam ser respondidos.\n` +
+    `- Tom: objetivo, em tópicos curtos. Sem floreio.`;
 
   const r = await fetch("https://api.perplexity.ai/chat/completions", {
     method: "POST",
@@ -194,12 +234,12 @@ async function researchWithPerplexity(
         {
           role: "system",
           content:
-            "Você é um pesquisador de mercado sênior especializado em infoprodutos. Trabalha SOMENTE com informações verificáveis em fontes públicas. Nunca inventa dados, números, nomes ou estatísticas. Quando uma informação não puder ser confirmada, escreve explicitamente 'não verificado'. Sempre responde em português do Brasil.",
+            "Você é um pesquisador de mercado sênior especializado em infoprodutos no Brasil. Trabalha EXCLUSIVAMENTE com informações verificáveis em fontes públicas (sites oficiais, relatórios de mercado, estudos públicos, conteúdos de imprensa, comunidades públicas). NUNCA inventa dados, números, nomes próprios, depoimentos ou estatísticas. Quando algo não pode ser confirmado, escreve literalmente 'não verificado'. Cita as fontes entre colchetes [URL]. Sempre responde em português do Brasil, em tópicos objetivos.",
         },
         { role: "user", content: userQuery },
       ],
       temperature: 0.1,
-      max_tokens: 1500,
+      max_tokens: 1800,
       return_citations: true,
     }),
   });
@@ -210,6 +250,7 @@ async function researchWithPerplexity(
     citations: data?.citations ?? [],
   };
 }
+
 
 // Chama LLM com tool calling — gateway depende do engine
 async function callLLMWithTool(opts: {
@@ -317,12 +358,24 @@ Deno.serve(async (req) => {
     const userId = userData.user.id;
 
     const body = await req.json();
-    const { url, engine = "lovable" } = body as { url?: string; engine?: "lovable" | "openai" | "gemini" };
+    const {
+      url,
+      engine = "lovable",
+      mode = "auto",
+      forceMethod,
+    } = body as {
+      url?: string;
+      engine?: "lovable" | "openai" | "gemini";
+      // "auto" = comportamento atual; "inspect" = só raspar e devolver prévia/qualidade; "run" = forçar execução com forceMethod
+      mode?: "auto" | "inspect" | "run";
+      forceMethod?: "fetch" | "firecrawl" | "perplexity";
+    };
 
     if (!url || !/^https?:\/\//i.test(url)) {
-      return new Response(JSON.stringify({ error: "URL inválida" }), {
-        status: 400, headers: { ...corsHeaders, "Content-Type": "application/json" },
-      });
+      return new Response(
+        JSON.stringify({ error: "URL inválida. Use http:// ou https://", errorCode: "INVALID_URL" }),
+        { status: 400, headers: { ...corsHeaders, "Content-Type": "application/json" } },
+      );
     }
 
     // Carrega integrações do usuário
@@ -336,28 +389,37 @@ Deno.serve(async (req) => {
       (integrations ?? []).map((i) => [i.provider, i]),
     ) as Record<string, { api_key: string; default_model: string | null }>;
 
-    // 1) Scrape
+    // 1) Scrape — segue forceMethod quando informado
     let pageContent = "";
-    let scrapeMethod: "firecrawl" | "fetch" | "perplexity-fallback" = "fetch";
-    if (byProvider.firecrawl?.api_key) {
-      try {
-        pageContent = await scrapeWithFirecrawl(url, byProvider.firecrawl.api_key);
-        if (pageContent) scrapeMethod = "firecrawl";
-      } catch (e) {
-        console.warn("Firecrawl falhou, caindo para fetch direto:", (e as Error).message);
-      }
-    }
-    if (!pageContent) {
-      try {
-        pageContent = await scrapeBasic(url);
-      } catch (e) {
-        console.warn("Fetch direto falhou:", (e as Error).message);
-      }
-    }
+    type ScrapeMethod = "firecrawl" | "fetch" | "perplexity-fallback";
+    let scrapeMethod: ScrapeMethod = "fetch";
+    let scrapeStatus = 0;
+    let scrapeBlocked = false;
+    let scrapeReason: string | undefined;
 
-    // Fallback: se o conteúdo está fraco/vazio (site bloqueia bots ou é SPA),
-    // pede para a Perplexity navegar e resumir a página.
-    if ((!pageContent || pageContent.length < 300) && byProvider.perplexity?.api_key) {
+    const tryFirecrawl = async () => {
+      if (!byProvider.firecrawl?.api_key) return false;
+      try {
+        const c = await scrapeWithFirecrawl(url, byProvider.firecrawl.api_key);
+        if (c) { pageContent = c; scrapeMethod = "firecrawl"; return true; }
+      } catch (e) {
+        console.warn("Firecrawl falhou:", (e as Error).message);
+        scrapeReason = `Firecrawl: ${(e as Error).message}`;
+      }
+      return false;
+    };
+
+    const tryFetch = async () => {
+      const out = await scrapeBasic(url);
+      scrapeStatus = out.status;
+      scrapeBlocked = out.blocked;
+      if (out.content) { pageContent = out.content; scrapeMethod = "fetch"; return true; }
+      scrapeReason = out.reason;
+      return false;
+    };
+
+    const tryPerplexity = async () => {
+      if (!byProvider.perplexity?.api_key) return false;
       try {
         const fb = await researchWithPerplexity(
           pageContent || `Página inacessível por scraping direto. URL: ${url}`,
@@ -366,23 +428,118 @@ Deno.serve(async (req) => {
           byProvider.perplexity.default_model ?? "sonar",
         );
         if (fb.content && fb.content.length > 200) {
-          pageContent = `# Conteúdo recuperado via Perplexity (scraping direto bloqueado)\n\n${fb.content}`;
+          pageContent = `# Conteúdo recuperado via Perplexity\n\n${fb.content}`;
           scrapeMethod = "perplexity-fallback";
+          return true;
         }
       } catch (e) {
         console.warn("Perplexity fallback falhou:", (e as Error).message);
+        scrapeReason = `Perplexity: ${(e as Error).message}`;
+      }
+      return false;
+    };
+
+    if (forceMethod === "perplexity") {
+      await tryPerplexity();
+    } else if (forceMethod === "firecrawl") {
+      await tryFirecrawl();
+    } else if (forceMethod === "fetch") {
+      await tryFetch();
+    } else {
+      // Ordem padrão: firecrawl (se conectado) → fetch → perplexity (fallback)
+      const ok = await tryFirecrawl();
+      if (!ok) await tryFetch();
+    }
+
+    // Avaliação de qualidade
+    const quality = assessContentQuality(pageContent);
+
+    // Modo "inspect": devolve resultado da raspagem para o usuário decidir
+    if (mode === "inspect" || (mode === "auto" && !quality.ok && forceMethod !== "perplexity")) {
+      // Se em "auto" e qualidade ruim, ainda tenta perplexity automaticamente caso esteja conectada
+      if (mode === "auto" && byProvider.perplexity?.api_key) {
+        const ok = await tryPerplexity();
+        const q2 = assessContentQuality(pageContent);
+        if (ok && q2.ok) {
+          // segue normal
+        } else {
+          return new Response(
+            JSON.stringify({
+              needsChoice: true,
+              errorCode: scrapeBlocked ? "SITE_BLOCKED" : "WEAK_CONTENT",
+              message: scrapeBlocked
+                ? `O site bloqueou a leitura automatizada (HTTP ${scrapeStatus || "?"}). Você pode tentar novamente usando a Perplexity para resumir a página, ou colar outro link.`
+                : `O conteúdo extraído ficou muito curto (${quality.chars} caracteres) — pode ser uma SPA, um site protegido ou uma página vazia.`,
+              quality,
+              scrapeMethod,
+              scrapeStatus,
+              preview: pageContent.slice(0, 600),
+              hasPerplexity: !!byProvider.perplexity?.api_key,
+              hasFirecrawl: !!byProvider.firecrawl?.api_key,
+              suggestions: [
+                ...(byProvider.perplexity?.api_key
+                  ? [{ id: "retry-perplexity", label: "Tentar com Perplexity (resumo da web)" }]
+                  : [{ id: "connect-perplexity", label: "Conectar Perplexity em Integrações" }]),
+                { id: "change-url", label: "Usar outro link" },
+              ],
+            }),
+            { status: 200, headers: { ...corsHeaders, "Content-Type": "application/json" } },
+          );
+        }
+      } else if (mode === "inspect") {
+        // só inspeção: nunca chama LLM
+        return new Response(
+          JSON.stringify({
+            inspected: true,
+            ok: quality.ok,
+            quality,
+            scrapeMethod,
+            scrapeStatus,
+            scrapeBlocked,
+            scrapeReason,
+            preview: pageContent.slice(0, 600),
+            hasPerplexity: !!byProvider.perplexity?.api_key,
+            hasFirecrawl: !!byProvider.firecrawl?.api_key,
+          }),
+          { status: 200, headers: { ...corsHeaders, "Content-Type": "application/json" } },
+        );
+      } else {
+        // Auto sem perplexity disponível e qualidade ruim → erro com sugestões
+        return new Response(
+          JSON.stringify({
+            needsChoice: true,
+            errorCode: scrapeBlocked ? "SITE_BLOCKED" : "WEAK_CONTENT",
+            message: scrapeBlocked
+              ? `O site bloqueou a leitura automatizada (HTTP ${scrapeStatus || "?"}). Conecte Perplexity em Integrações para contornar, ou tente outro link.`
+              : `O conteúdo extraído ficou muito curto (${quality.chars} caracteres). Conecte Perplexity em Integrações ou tente outro link.`,
+            quality,
+            scrapeMethod,
+            scrapeStatus,
+            preview: pageContent.slice(0, 600),
+            hasPerplexity: false,
+            hasFirecrawl: !!byProvider.firecrawl?.api_key,
+            suggestions: [
+              { id: "connect-perplexity", label: "Conectar Perplexity em Integrações" },
+              { id: "change-url", label: "Usar outro link" },
+            ],
+          }),
+          { status: 200, headers: { ...corsHeaders, "Content-Type": "application/json" } },
+        );
       }
     }
 
     if (!pageContent || pageContent.length < 100) {
       return new Response(
         JSON.stringify({
-          error:
-            "Não foi possível extrair conteúdo da URL. O site pode bloquear acesso automatizado. Conecte Firecrawl ou Perplexity em Integrações para contornar.",
+          error: "Não foi possível extrair conteúdo da URL.",
+          errorCode: scrapeBlocked ? "SITE_BLOCKED" : "EMPTY_CONTENT",
+          scrapeStatus,
+          hasPerplexity: !!byProvider.perplexity?.api_key,
         }),
         { status: 422, headers: { ...corsHeaders, "Content-Type": "application/json" } },
       );
     }
+
 
     // 2) Pesquisa adicional (opcional) — focada em público-alvo/nicho
 
@@ -450,12 +607,15 @@ Deno.serve(async (req) => {
       engine, apiKey: engineKey, model: engineModel, systemPrompt, userPrompt,
     });
 
+    const finalMethod: string = scrapeMethod;
     return new Response(
       JSON.stringify({
         data: filled,
-        scrapeMethod,
-        usedFirecrawl: scrapeMethod === "firecrawl",
-        usedPerplexity: !!byProvider.perplexity?.api_key && (!!research || scrapeMethod === "perplexity-fallback"),
+        scrapeMethod: finalMethod,
+        usedFirecrawl: finalMethod === "firecrawl",
+        usedPerplexity:
+          !!byProvider.perplexity?.api_key &&
+          (!!research || finalMethod === "perplexity-fallback"),
         citations,
         engine,
         model: engineModel,
