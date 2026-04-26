@@ -14,6 +14,39 @@ export type Database = {
   }
   public: {
     Tables: {
+      ai_integrations: {
+        Row: {
+          api_key: string
+          created_at: string
+          default_model: string | null
+          enabled: boolean
+          id: string
+          provider: Database["public"]["Enums"]["ai_provider"]
+          updated_at: string
+          user_id: string
+        }
+        Insert: {
+          api_key: string
+          created_at?: string
+          default_model?: string | null
+          enabled?: boolean
+          id?: string
+          provider: Database["public"]["Enums"]["ai_provider"]
+          updated_at?: string
+          user_id: string
+        }
+        Update: {
+          api_key?: string
+          created_at?: string
+          default_model?: string | null
+          enabled?: boolean
+          id?: string
+          provider?: Database["public"]["Enums"]["ai_provider"]
+          updated_at?: string
+          user_id?: string
+        }
+        Relationships: []
+      }
       briefings: {
         Row: {
           created_at: string
@@ -106,6 +139,7 @@ export type Database = {
       }
     }
     Enums: {
+      ai_provider: "perplexity" | "openai" | "gemini" | "firecrawl"
       app_role: "admin" | "user"
     }
     CompositeTypes: {
@@ -234,6 +268,7 @@ export type CompositeTypes<
 export const Constants = {
   public: {
     Enums: {
+      ai_provider: ["perplexity", "openai", "gemini", "firecrawl"],
       app_role: ["admin", "user"],
     },
   },

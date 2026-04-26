@@ -33,9 +33,9 @@ export function exportBriefingMarkdown(
     `**Gerado em:** ${now}`,
   );
 
-  const blockLetters = ["A", "B", "C", "D", "E"];
+  const blockLetters = ["A", "B", "C", "D", "E", "F"];
   FIXED_SECTIONS.forEach((s, i) => {
-    blocks.push(`## BLOCO ${blockLetters[i]} — ${s.title}`);
+    blocks.push(`## BLOCO ${blockLetters[i] ?? `${i + 1}`} — ${s.title}`);
     if (s.id === "avatar") {
       blocks.push(`**Descrição do Avatar:**\n\n${v(data, "descricaoAvatar")}`);
       blocks.push(`**Dores:**\n1. ${v(data, "dor1")}\n2. ${v(data, "dor2")}\n3. ${v(data, "dor3")}`);
@@ -44,7 +44,18 @@ export function exportBriefingMarkdown(
       blocks.push(
         `| Campo | Valor |\n|---|---|\n` +
         `| Nível de Consciência | ${v(data, "nivelConsciencia")} |\n` +
-        `| Canais Online | ${v(data, "canaisOnline")} |`,
+        `| Canais Online | ${v(data, "canaisOnline")} |\n` +
+        `| Resumo do Mapa da Empatia | ${v(data, "empatiaResumo")} |`,
+      );
+    } else if (s.id === "mapaEmpatia") {
+      blocks.push(
+        `| Quadrante | Conteúdo |\n|---|---|\n` +
+        `| 🧠 O que pensa e sente | ${v(data, "me_pensaSente")} |\n` +
+        `| 👀 O que vê | ${v(data, "me_ve")} |\n` +
+        `| 👂 O que ouve | ${v(data, "me_ouve")} |\n` +
+        `| 💬 O que fala e faz | ${v(data, "me_falaFaz")} |\n` +
+        `| 😣 Dores | ${v(data, "me_dores")} |\n` +
+        `| 🏆 Ganhos | ${v(data, "me_ganhos")} |`,
       );
     } else {
       blocks.push(sectionTable(data, s));

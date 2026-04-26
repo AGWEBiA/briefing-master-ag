@@ -1,6 +1,7 @@
 import {
   Package, Users, Trophy, ClipboardList, Target,
   Ticket, Megaphone, Sprout, Lock, Infinity as InfinityIcon, Handshake, Puzzle,
+  HeartHandshake,
   type LucideIcon,
 } from "lucide-react";
 
@@ -84,6 +85,24 @@ export const FIXED_SECTIONS: Section[] = [
       { fields: [
         { id: "nivelConsciencia", label: "Nível de Consciência do Avatar", type: "select", hint: "Quão consciente ele está do problema e da solução?", options: ["Inconsciente", "Consciente do problema", "Consciente da solução", "Consciente do produto", "Mais consciente"] },
         { id: "canaisOnline", label: "Canais Online Principais", type: "text", placeholder: "Ex: Instagram, YouTube, LinkedIn..." },
+      ]},
+      { label: "Resumo do Mapa da Empatia", fields: [
+        { id: "empatiaResumo", label: "Síntese do Mapa da Empatia", type: "textarea", rows: 3, hint: "Breve resumo de quem é seu avatar com base nos 6 quadrantes (preencha em detalhe na seção 'Mapa da Empatia')." },
+      ]},
+    ],
+  },
+  {
+    id: "mapaEmpatia",
+    title: "Mapa da Empatia",
+    icon: HeartHandshake,
+    groups: [
+      { fields: [
+        { id: "me_pensaSente", label: "O que PENSA e SENTE?", type: "textarea", rows: 3, hint: "Preocupações, sonhos, aspirações, o que realmente importa (mesmo que não diga em voz alta)." },
+        { id: "me_ve", label: "O que VÊ?", type: "textarea", rows: 3, hint: "Ambiente, amigos, ofertas do mercado, o que o cerca no dia a dia." },
+        { id: "me_ouve", label: "O que OUVE?", type: "textarea", rows: 3, hint: "O que dizem amigos, família, chefe, influenciadores. Quais canais consome?" },
+        { id: "me_falaFaz", label: "O que FALA e FAZ?", type: "textarea", rows: 3, hint: "Postura em público, comportamentos, com quem se relaciona, o que compartilha." },
+        { id: "me_dores", label: "DORES (medos, frustrações, obstáculos)", type: "textarea", rows: 3, hint: "O que o impede de chegar onde quer? Riscos percebidos." },
+        { id: "me_ganhos", label: "GANHOS (desejos, necessidades, métricas de sucesso)", type: "textarea", rows: 3, hint: "O que ele entende como sucesso? Como mede progresso?" },
       ]},
     ],
   },

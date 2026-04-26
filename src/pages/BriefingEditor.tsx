@@ -2,7 +2,7 @@ import { useEffect, useMemo, useRef, useState } from "react";
 import { useNavigate, useParams, Link } from "react-router-dom";
 import {
   ArrowLeft, ChevronLeft, ChevronRight, Download, Loader2,
-  RefreshCw, Rocket, Save,
+  RefreshCw, Rocket, Save, Wand2,
 } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardHeader } from "@/components/ui/card";
@@ -18,6 +18,7 @@ import { AppHeader } from "@/components/AppHeader";
 import { BriefingSidebar } from "@/components/briefing/BriefingSidebar";
 import { FieldRenderer } from "@/components/briefing/FieldRenderer";
 import { StrategyPicker } from "@/components/briefing/StrategyPicker";
+import { ReverseEngineerDialog } from "@/components/briefing/ReverseEngineerDialog";
 import {
   FIXED_SECTIONS, getStrategy, type Section, type StrategyId,
 } from "@/lib/briefingSchema";
@@ -120,6 +121,13 @@ const BriefingEditor = () => {
     toast.success("Formulário reiniciado.");
   };
 
+  const handleReverseEngineerApply = (incoming: Record<string, string>) => {
+    // Sobrescreve tudo: substitui data pelo retorno da IA
+    setData({ ...incoming });
+    setCurrentIndex(0);
+    setVisited(new Set());
+  };
+
   if (loading) {
     return (
       <div className="flex min-h-screen items-center justify-center">
@@ -134,6 +142,7 @@ const BriefingEditor = () => {
     <div className="min-h-screen bg-background">
       <AppHeader>
         <div className="hidden items-center gap-2 md:flex">
+          <ReverseEngineerDialog onApply={handleReverseEngineerApply} />
           <Button variant="ghost" size="sm" onClick={handleReset}>
             <RefreshCw className="mr-2 h-4 w-4" /> Reiniciar
           </Button>
@@ -289,7 +298,15 @@ const BriefingEditor = () => {
             </CardContent>
           </Card>
 
-          <div className="flex gap-2 md:hidden">
+          <div className="flex flex-wrap gap-2 md:hidden">
+            <ReverseEngineerDialog
+              onApply={handleReverseEngineerApply}
+              trigger={
+                <Button size="sm" className="gap-2">
+                  <Wand2 className="h-4 w-4" /> Engenharia Reversa
+                </Button>
+              }
+            />
             <Button variant="outline" size="sm" onClick={handleReset}>
               <RefreshCw className="mr-2 h-4 w-4" /> Reiniciar
             </Button>
