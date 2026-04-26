@@ -42,6 +42,9 @@ export function ExportPreviewDialog({
   const [pdfLoading, setPdfLoading] = useState(false);
   const [docHtml, setDocHtml] = useState<string>("");
   const [mdContent, setMdContent] = useState<string>("");
+  const [docLayout, setDocLayout] = useState<DocLayout>("a4");
+  const [docHeight, setDocHeight] = useState<number>(1200);
+  const docIframeRef = useRef<HTMLIFrameElement>(null);
 
   // Reset on open / data change
   useEffect(() => {
