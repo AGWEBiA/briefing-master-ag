@@ -293,6 +293,11 @@ const BriefingEditor = () => {
 
   const SectionIcon = section.icon;
 
+  const openPreview = (format: ExportFormat) => {
+    setPreviewFormat(format);
+    setPreviewOpen(true);
+  };
+
   const ExportDropdown = ({ size = "sm" as const, variant = "outline" as const, fullWidth = false }) => (
     <DropdownMenu>
       <DropdownMenuTrigger asChild>
@@ -307,15 +312,19 @@ const BriefingEditor = () => {
             : "Exportar"}
         </Button>
       </DropdownMenuTrigger>
-      <DropdownMenuContent align="end">
+      <DropdownMenuContent align="end" className="w-56">
+        <DropdownMenuItem onClick={() => openPreview("pdf")} disabled={exporting}>
+          <Eye className="mr-2 h-4 w-4" /> Pré-visualizar antes
+        </DropdownMenuItem>
+        <div className="my-1 h-px bg-border" />
         <DropdownMenuItem onClick={() => handleExport("pdf")} disabled={exporting}>
-          <FileType className="mr-2 h-4 w-4" /> PDF (.pdf)
+          <FileType className="mr-2 h-4 w-4" /> Baixar PDF (.pdf)
         </DropdownMenuItem>
         <DropdownMenuItem onClick={() => handleExport("doc")} disabled={exporting}>
-          <FileText className="mr-2 h-4 w-4" /> Word (.doc)
+          <FileText className="mr-2 h-4 w-4" /> Baixar Word (.doc)
         </DropdownMenuItem>
         <DropdownMenuItem onClick={() => handleExport("md")} disabled={exporting}>
-          <FileText className="mr-2 h-4 w-4" /> Markdown (.md)
+          <FileText className="mr-2 h-4 w-4" /> Baixar Markdown (.md)
         </DropdownMenuItem>
       </DropdownMenuContent>
     </DropdownMenu>
