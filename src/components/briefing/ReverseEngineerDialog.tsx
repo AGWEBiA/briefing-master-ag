@@ -199,30 +199,72 @@ export const ReverseEngineerDialog = ({ onApply, trigger }: Props) => {
                     </pre>
                   </details>
                 )}
-                <div className="flex flex-wrap gap-2">
-                  {choice.hasPerplexity ? (
+                <div className="space-y-2">
+                  <p className="text-xs font-medium text-foreground">
+                    Escolha como prosseguir:
+                  </p>
+                  <div className="grid gap-2 sm:grid-cols-2">
                     <Button
                       type="button"
                       size="sm"
-                      onClick={() => run("perplexity")}
+                      variant="outline"
+                      onClick={() => run("fetch")}
                       disabled={running}
+                      className="justify-start"
                     >
                       <RefreshCw className="mr-2 h-3.5 w-3.5" />
-                      Tentar com Perplexity
+                      Tentar scrape direto novamente
                     </Button>
-                  ) : (
-                    <Button type="button" size="sm" variant="outline" asChild>
-                      <Link to="/integrations">Conectar Perplexity</Link>
+
+                    {choice.hasFirecrawl ? (
+                      <Button
+                        type="button"
+                        size="sm"
+                        variant="outline"
+                        onClick={() => run("firecrawl")}
+                        disabled={running}
+                        className="justify-start"
+                      >
+                        🔥 Extrair com Firecrawl
+                      </Button>
+                    ) : (
+                      <Button type="button" size="sm" variant="outline" asChild className="justify-start">
+                        <Link to="/integrations">🔥 Conectar Firecrawl</Link>
+                      </Button>
+                    )}
+
+                    {choice.hasPerplexity ? (
+                      <Button
+                        type="button"
+                        size="sm"
+                        onClick={() => run("perplexity")}
+                        disabled={running}
+                        className="justify-start"
+                      >
+                        🔎 Pesquisar com Perplexity
+                      </Button>
+                    ) : (
+                      <Button type="button" size="sm" variant="outline" asChild className="justify-start">
+                        <Link to="/integrations">🔎 Conectar Perplexity</Link>
+                      </Button>
+                    )}
+
+                    <Button
+                      type="button"
+                      size="sm"
+                      variant="ghost"
+                      onClick={() => { setChoice(null); setUrl(""); }}
+                      disabled={running}
+                      className="justify-start"
+                    >
+                      Usar outro link
                     </Button>
-                  )}
-                  <Button
-                    type="button"
-                    size="sm"
-                    variant="outline"
-                    onClick={() => { setChoice(null); setUrl(""); }}
-                  >
-                    Usar outro link
-                  </Button>
+                  </div>
+                  <p className="text-[11px] text-muted-foreground">
+                    💡 <strong>Scrape direto</strong>: rápido, mas falha em SPAs/sites protegidos.{" "}
+                    <strong>Firecrawl</strong>: extração avançada (renderiza JS).{" "}
+                    <strong>Perplexity</strong>: ignora a página e pesquisa o nicho na web.
+                  </p>
                 </div>
               </AlertDescription>
             </Alert>
