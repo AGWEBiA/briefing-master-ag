@@ -46,6 +46,14 @@ const Admin = () => {
   const [briefings, setBriefings] = useState<BriefingRow[]>([]);
   const [editing, setEditing] = useState<AdminUser | null>(null);
   const [deleting, setDeleting] = useState<AdminUser | null>(null);
+  const [creating, setCreating] = useState(false);
+  const [importResult, setImportResult] = useState<null | {
+    created: number;
+    total: number;
+    results: Array<{ email: string; status: "created" | "error"; error?: string }>;
+  }>(null);
+  const [importing, setImporting] = useState(false);
+  const fileRef = useRef<HTMLInputElement>(null);
 
   const loadUsers = async () => {
     const { data, error } = await supabase.functions.invoke("admin-users", {
