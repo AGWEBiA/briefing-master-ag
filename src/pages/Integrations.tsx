@@ -247,7 +247,39 @@ const Integrations = () => {
                       </div>
                     )}
 
-                    <div className="flex justify-end">
+                    {testResults[p.id] && (
+                      <div
+                        className={`flex items-start gap-2 rounded-md border p-3 text-sm ${
+                          testResults[p.id]!.ok
+                            ? "border-success/40 bg-success/10 text-success-foreground"
+                            : "border-destructive/40 bg-destructive/10 text-destructive"
+                        }`}
+                      >
+                        {testResults[p.id]!.ok ? (
+                          <CheckCircle2 className="mt-0.5 h-4 w-4 shrink-0 text-success" />
+                        ) : (
+                          <XCircle className="mt-0.5 h-4 w-4 shrink-0" />
+                        )}
+                        <span>{testResults[p.id]!.message}</span>
+                      </div>
+                    )}
+
+                    <div className="flex flex-wrap justify-end gap-2">
+                      {isConnected && (
+                        <Button
+                          type="button"
+                          variant="outline"
+                          onClick={() => testConnection(p.id)}
+                          disabled={testing === p.id}
+                        >
+                          {testing === p.id ? (
+                            <Loader2 className="mr-2 h-4 w-4 animate-spin" />
+                          ) : (
+                            <Zap className="mr-2 h-4 w-4" />
+                          )}
+                          Testar conexão
+                        </Button>
+                      )}
                       <Button onClick={() => save(p.id)} disabled={saving === p.id}>
                         {saving === p.id && <Loader2 className="mr-2 h-4 w-4 animate-spin" />}
                         {isConnected ? "Atualizar" : "Conectar"}
