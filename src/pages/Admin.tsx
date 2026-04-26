@@ -57,6 +57,8 @@ const Admin = () => {
   }>(null);
   const [importing, setImporting] = useState(false);
   const fileRef = useRef<HTMLInputElement>(null);
+  const [userSearch, setUserSearch] = useState("");
+  const [userRoleFilter, setUserRoleFilter] = useState<"all" | "admin" | "user">("all");
 
   const loadUsers = async () => {
     const { data, error } = await supabase.functions.invoke("admin-users", {
