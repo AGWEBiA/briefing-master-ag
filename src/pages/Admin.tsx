@@ -201,9 +201,18 @@ const Admin = () => {
     setBriefingSort((s) => s.key === key ? { key, dir: s.dir === "asc" ? "desc" : "asc" } : { key, dir: "asc" });
 
   const SortIcon = ({ active, dir }: { active: boolean; dir: "asc" | "desc" }) =>
-    !active ? <ArrowUpDown className="h-3.5 w-3.5 opacity-40" />
-      : dir === "asc" ? <ArrowUp className="h-3.5 w-3.5" />
-      : <ArrowDown className="h-3.5 w-3.5" />;
+    !active ? <ArrowUpDown className="h-3.5 w-3.5 opacity-40" aria-hidden="true" />
+      : dir === "asc" ? <ArrowUp className="h-3.5 w-3.5" aria-hidden="true" />
+      : <ArrowDown className="h-3.5 w-3.5" aria-hidden="true" />;
+
+  const ariaSortFor = (active: boolean, dir: "asc" | "desc"): "ascending" | "descending" | "none" =>
+    !active ? "none" : dir === "asc" ? "ascending" : "descending";
+  const sortLabel = (columnLabel: string, active: boolean, dir: "asc" | "desc") => {
+    if (!active) return `Ordenar por ${columnLabel}`;
+    const next = dir === "asc" ? "decrescente" : "crescente";
+    const current = dir === "asc" ? "crescente" : "decrescente";
+    return `${columnLabel}: ordenação ${current} ativa. Ativar para ordenar de forma ${next}.`;
+  };
 
   return (
     <div className="min-h-screen bg-background">
@@ -297,11 +306,12 @@ const Admin = () => {
             <Table>
               <TableHeader>
                 <TableRow>
-                  <TableHead>
+                  <TableHead aria-sort={ariaSortFor(userSort.key === "name", userSort.dir)}>
                     <button
                       type="button"
                       onClick={() => toggleUserSort("name")}
                       className="flex items-center gap-1.5 font-medium hover:text-foreground"
+                      aria-label={sortLabel("Nome", userSort.key === "name", userSort.dir)}
                     >
                       Nome
                       <SortIcon active={userSort.key === "name"} dir={userSort.dir} />
@@ -309,11 +319,12 @@ const Admin = () => {
                   </TableHead>
                   <TableHead>Email</TableHead>
                   <TableHead>Role</TableHead>
-                  <TableHead>
+                  <TableHead aria-sort={ariaSortFor(userSort.key === "last_sign_in", userSort.dir)}>
                     <button
                       type="button"
                       onClick={() => toggleUserSort("last_sign_in")}
                       className="flex items-center gap-1.5 font-medium hover:text-foreground"
+                      aria-label={sortLabel("Último acesso", userSort.key === "last_sign_in", userSort.dir)}
                     >
                       Último acesso
                       <SortIcon active={userSort.key === "last_sign_in"} dir={userSort.dir} />
@@ -412,11 +423,12 @@ const Admin = () => {
             <Table>
               <TableHeader>
                 <TableRow>
-                  <TableHead>
+                  <TableHead aria-sort={ariaSortFor(briefingSort.key === "title", briefingSort.dir)}>
                     <button
                       type="button"
                       onClick={() => toggleBriefingSort("title")}
                       className="flex items-center gap-1.5 font-medium hover:text-foreground"
+                      aria-label={sortLabel("Título", briefingSort.key === "title", briefingSort.dir)}
                     >
                       Título
                       <SortIcon active={briefingSort.key === "title"} dir={briefingSort.dir} />
@@ -424,11 +436,12 @@ const Admin = () => {
                   </TableHead>
                   <TableHead>Usuário</TableHead>
                   <TableHead>Estratégia</TableHead><TableHead>Status</TableHead>
-                  <TableHead>
+                  <TableHead aria-sort={ariaSortFor(briefingSort.key === "updated", briefingSort.dir)}>
                     <button
                       type="button"
                       onClick={() => toggleBriefingSort("updated")}
                       className="flex items-center gap-1.5 font-medium hover:text-foreground"
+                      aria-label={sortLabel("Atualizado", briefingSort.key === "updated", briefingSort.dir)}
                     >
                       Atualizado
                       <SortIcon active={briefingSort.key === "updated"} dir={briefingSort.dir} />
