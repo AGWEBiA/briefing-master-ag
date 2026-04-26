@@ -76,6 +76,73 @@ const Admin = () => {
     })();
   }, []);
 
+  const downloadTemplate = () => {
+    const ws = XLSX.utils.json_to_sheet([
+      { email: "exemplo@dominio.com", password: "senha123", display_name: "Nome Completo", is_admin: false },
+      { email: "admin@dominio.com", password: "outraSenha", display_name: "Admin Exemplo", is_admin: true },
+    ]);
+    const wb = XLSX.utils.book_new();
+    XLSX.utils.book_append_sheet(wb, ws, "usuarios");
+    XLSX.writeFile(wb, "modelo-importacao-usuarios.xlsx");
+  };
+
+  const handleFile = async (e: React.ChangeEvent<HTMLInputElement>) => {
+    const file = e.target.files?.[0];
+    if (!file) return;
+    e.target.value = "";
+
+    try {
+      const buf = await file.arrayBuffer();
+      const wb = XLSX.read(buf, { type: "array" });
+      const sheet = wb.Sheets[wb.SheetNames[0]];
+      const rows = XLSX.utils.sheet_to_json<Record<string, unknown>>(sheet, { defval: "" });
+
+      const items = rows.map((r) => {
+        const get = (keys: string[]) => {
+          for (const k of keys) {
+            const found = Object.keys(r).find((x) => x.toLowerCase().trim() === k);
+            if (found && r[found] !== "" && r[found] != null) return String(r[found]).trim();
+          }
+          return "";
+        };
+        const adminRaw = get(["is_admin", "admin", "isadmin"]).toLowerCase();
+        return {
+          email: get(["email", "e-mail"]),
+          password: get(["password", "senha"]),
+          display_name: get(["display_name", "nome", "name", "full_name"]) || null,
+          is_admin: ["true", "1", "sim", "yes", "x"].includes(adminRaw),
+        };
+      }).filter((i) => i.email);
+
+      if (!items.length) {
+        toast.error("Nenhuma linha válida encontrada.");
+        return;
+      }
+
+      setImporting(true);
+      const { data, error } = await supabase.functions.invoke("admin-users", {
+        body: { action: "bulk_create", items },
+      });
+      setImporting(false);
+
+      if (error || data?.error) {
+        toast.error(data?.error ?? "Falha na importação");
+        return;
+      }
+      setImportResult({
+        created: data.created,
+        total: data.total,
+        results: data.results,
+      });
+      toast.success(`${data.created}/${data.total} usuários importados`);
+      await loadUsers();
+    } catch (err) {
+      setImporting(false);
+      toast.error("Não foi possível ler a planilha");
+      console.error(err);
+    }
+  };
+
   if (loading) {
     return (
       <div className="flex min-h-screen items-center justify-center">
