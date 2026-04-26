@@ -402,6 +402,14 @@ const BriefingEditor = () => {
                 </>
               )}
 
+              {/* Preview interativo do Mapa da Empatia (grid 3x2) */}
+              {section.id === "mapaEmpatia" && (
+                <>
+                  <EmpathyMapPreview data={data} onChange={updateField} />
+                  <div className="border-t" />
+                </>
+              )}
+
               {section.groups.map((g, gi) => (
                 <div key={gi} className="space-y-4">
                   {g.label && (
