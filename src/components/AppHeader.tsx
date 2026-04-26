@@ -52,13 +52,15 @@ export const AppHeader = ({ children }: { children?: React.ReactNode }) => {
               <DropdownMenuItem onClick={() => navigate("/dashboard")}>
                 <LayoutDashboard className="mr-2 h-4 w-4" /> Meus briefings
               </DropdownMenuItem>
-              <DropdownMenuItem onClick={() => navigate("/integrations")}>
-                <Plug className="mr-2 h-4 w-4" /> Integrações de IA
-              </DropdownMenuItem>
               {isAdmin && (
-                <DropdownMenuItem onClick={() => navigate("/admin")}>
-                  <Shield className="mr-2 h-4 w-4" /> Painel Admin
-                </DropdownMenuItem>
+                <>
+                  <DropdownMenuItem onClick={() => navigate("/integrations")}>
+                    <Plug className="mr-2 h-4 w-4" /> Integrações de IA
+                  </DropdownMenuItem>
+                  <DropdownMenuItem onClick={() => navigate("/admin")}>
+                    <Shield className="mr-2 h-4 w-4" /> Painel Admin
+                  </DropdownMenuItem>
+                </>
               )}
               <DropdownMenuSeparator />
               <DropdownMenuItem onClick={async () => { await signOut(); navigate("/auth"); }}>
