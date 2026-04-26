@@ -336,7 +336,8 @@ function assessContentQuality(content: string, thresholdAdjustment = 0): Quality
 // Lógica: se o usuário marca "bom" conteúdos abaixo do limiar atual → reduzir o limiar.
 // Se marca "ruim" conteúdos acima do limiar atual → aumentar o limiar.
 async function computeThresholdAdjustment(
-  supabase: ReturnType<typeof createClient>,
+  // deno-lint-ignore no-explicit-any
+  supabase: any,
   userId: string,
   host: string,
 ): Promise<number> {
