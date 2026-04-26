@@ -105,11 +105,71 @@ async function scrapeWithFirecrawl(url: string, apiKey: string): Promise<string>
   return (data?.data?.markdown ?? data?.markdown ?? "").slice(0, 20000);
 }
 
+type PageType = "spa" | "amp" | "ssr" | "static" | "blocked" | "unknown";
+
 interface ScrapeOutcome {
   content: string;
   status: number;
   blocked: boolean;
   reason?: string;
+  pageType: PageType;
+  pageSignals: string[]; // razões que justificam a classificação
+}
+
+// Heurística: classifica a página com base no HTML cru e no texto extraído.
+function detectPageType(html: string, textChars: number, blocked: boolean): { type: PageType; signals: string[] } {
+  if (blocked) return { type: "blocked", signals: ["bloqueio HTTP"] };
+  const signals: string[] = [];
+  const lower = html.toLowerCase();
+
+  // AMP: <html ⚡> ou <html amp>
+  if (/<html[^>]*\s(amp|⚡)(\s|=|>)/i.test(html)) {
+    signals.push("tag <html amp>");
+    return { type: "amp", signals };
+  }
+
+  // SPA fingerprints
+  const spaIndicators = [
+    { re: /<div[^>]+id=["'](root|app|__next|__nuxt|svelte)["']/i, msg: "div root de SPA" },
+    { re: /<script[^>]+type=["']module["']/i, msg: "script type=module" },
+    { re: /\/_next\//, msg: "_next bundle" },
+    { re: /\/static\/js\/main\.[a-f0-9]+\.js/i, msg: "bundle CRA hash" },
+    { re: /window\.__NUXT__/, msg: "__NUXT__" },
+    { re: /window\.__INITIAL_STATE__/, msg: "__INITIAL_STATE__" },
+    { re: /data-reactroot/i, msg: "data-reactroot" },
+    { re: /ng-version=/i, msg: "Angular ng-version" },
+  ];
+  for (const ind of spaIndicators) if (ind.re.test(lower) || ind.re.test(html)) signals.push(ind.msg);
+
+  // Razão texto/HTML: SPAs geralmente têm muito HTML e pouco texto extraído
+  const htmlSize = html.length || 1;
+  const textRatio = textChars / htmlSize;
+
+  // <noscript> grande indica que o site avisa "ative JS" → quase certo SPA
+  const noscriptMatch = html.match(/<noscript[^>]*>([\s\S]{0,400})<\/noscript>/i);
+  if (noscriptMatch && /enable\s+javascript|habilit[ae]\s+javascript|ative\s+o?\s*javascript/i.test(noscriptMatch[1])) {
+    signals.push("aviso 'ative JavaScript'");
+  }
+
+  if (signals.length >= 1 && (textRatio < 0.04 || textChars < 600)) {
+    signals.push(`pouco texto vs HTML (${(textRatio * 100).toFixed(1)}%)`);
+    return { type: "spa", signals };
+  }
+
+  // SSR fraco: tem indicador de framework SSR mas com bom texto
+  if (signals.length >= 1 && textChars >= 600) {
+    signals.push(`SSR aparente (texto ok: ${textChars}c, ${(textRatio * 100).toFixed(1)}%)`);
+    return { type: "ssr", signals };
+  }
+
+  // Static: HTML simples sem fingerprints
+  if (textChars >= 400) {
+    signals.push("HTML estático tradicional");
+    return { type: "static", signals };
+  }
+
+  signals.push("não foi possível classificar com confiança");
+  return { type: "unknown", signals };
 }
 
 async function scrapeBasic(url: string): Promise<ScrapeOutcome> {
@@ -126,7 +186,11 @@ async function scrapeBasic(url: string): Promise<ScrapeOutcome> {
       },
     });
   } catch (e) {
-    return { content: "", status: 0, blocked: true, reason: `Falha de rede: ${(e as Error).message}` };
+    return {
+      content: "", status: 0, blocked: true,
+      reason: `Falha de rede: ${(e as Error).message}`,
+      pageType: "blocked", pageSignals: ["erro de rede"],
+    };
   }
 
   if (!r.ok) {
@@ -138,6 +202,8 @@ async function scrapeBasic(url: string): Promise<ScrapeOutcome> {
       reason: blocked
         ? `O site bloqueou o acesso automatizado (HTTP ${r.status}).`
         : `HTTP ${r.status} ao buscar a URL.`,
+      pageType: "blocked",
+      pageSignals: [`HTTP ${r.status}`],
     };
   }
 
@@ -181,7 +247,15 @@ async function scrapeBasic(url: string): Promise<ScrapeOutcome> {
     (headings ? `## Estrutura da página\n${headings}\n\n` : "") +
     `## Conteúdo\n${body}`;
 
-  return { content: composed.slice(0, 20000), status: r.status, blocked: false };
+  const detection = detectPageType(html, body.length, false);
+
+  return {
+    content: composed.slice(0, 20000),
+    status: r.status,
+    blocked: false,
+    pageType: detection.type,
+    pageSignals: detection.signals,
+  };
 }
 
 // ===== Qualidade do conteúdo raspado =====
