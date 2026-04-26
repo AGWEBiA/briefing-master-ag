@@ -262,70 +262,70 @@ export const ReverseEngineerDialog = ({ onApply, trigger }: Props) => {
                 )}
 
                 <div className="space-y-2">
-                  <p className="text-xs font-medium text-foreground">
-                    Escolha como prosseguir:
-                  </p>
-                  <div className="grid gap-2 sm:grid-cols-2">
-                    <Button
-                      type="button"
-                      size="sm"
-                      variant="outline"
-                      onClick={() => run("fetch")}
-                      disabled={running}
-                      className="justify-start"
-                    >
-                      <RefreshCw className="mr-2 h-3.5 w-3.5" />
-                      Tentar scrape direto novamente
-                    </Button>
+                  <p className="text-xs font-medium text-foreground">Escolha como prosseguir:</p>
+                  <div className="grid gap-2 sm:grid-cols-3">
+                    {(["fetch", "firecrawl", "perplexity"] as const).map((id) => {
+                      const meta = {
+                        fetch: { icon: "⚡", label: "Scrape direto", hint: "Rápido, falha em SPAs" },
+                        firecrawl: { icon: "🔥", label: "Firecrawl", hint: "Renderiza JavaScript" },
+                        perplexity: { icon: "🔎", label: "Perplexity", hint: "Pesquisa o nicho" },
+                      }[id];
+                      const flag = (choice.methods ?? {
+                        fetch: { available: true, disabled: false },
+                        firecrawl: { available: choice.hasFirecrawl, disabled: false },
+                        perplexity: { available: choice.hasPerplexity, disabled: false },
+                      })[id];
+                      const isRecommended = choice.recommended === id;
 
-                    {choice.hasFirecrawl ? (
-                      <Button
-                        type="button"
-                        size="sm"
-                        variant="outline"
-                        onClick={() => run("firecrawl")}
-                        disabled={running}
-                        className="justify-start"
-                      >
-                        🔥 Extrair com Firecrawl
-                      </Button>
-                    ) : (
-                      <Button type="button" size="sm" variant="outline" asChild className="justify-start">
-                        <Link to="/integrations">🔥 Conectar Firecrawl</Link>
-                      </Button>
-                    )}
-
-                    {choice.hasPerplexity ? (
-                      <Button
-                        type="button"
-                        size="sm"
-                        onClick={() => run("perplexity")}
-                        disabled={running}
-                        className="justify-start"
-                      >
-                        🔎 Pesquisar com Perplexity
-                      </Button>
-                    ) : (
-                      <Button type="button" size="sm" variant="outline" asChild className="justify-start">
-                        <Link to="/integrations">🔎 Conectar Perplexity</Link>
-                      </Button>
-                    )}
-
-                    <Button
-                      type="button"
-                      size="sm"
-                      variant="ghost"
-                      onClick={() => { setChoice(null); setUrl(""); }}
-                      disabled={running}
-                      className="justify-start"
-                    >
-                      Usar outro link
-                    </Button>
+                      if (!flag.available) {
+                        return (
+                          <Button key={id} type="button" size="sm" variant="outline" asChild className="h-auto py-2">
+                            <Link to="/integrations" className="flex flex-col items-start gap-0.5 w-full">
+                              <span>{meta.icon} Conectar {meta.label}</span>
+                              <span className="text-[10px] text-muted-foreground">{flag.reason ?? meta.hint}</span>
+                            </Link>
+                          </Button>
+                        );
+                      }
+                      return (
+                        <Button
+                          key={id}
+                          type="button"
+                          size="sm"
+                          variant={isRecommended ? "default" : "outline"}
+                          onClick={() => run(id)}
+                          disabled={running || flag.disabled}
+                          className="h-auto py-2 flex flex-col items-start gap-0.5 relative"
+                          title={flag.reason}
+                        >
+                          {isRecommended && (
+                            <Badge className="absolute -top-2 -right-2 h-4 px-1.5 text-[9px] gap-0.5">
+                              <Star className="h-2.5 w-2.5" /> Recomendado
+                            </Badge>
+                          )}
+                          <span className="flex items-center gap-1">
+                            {id === "fetch" && <RefreshCw className="h-3.5 w-3.5" />}
+                            <span>{meta.icon} {meta.label}</span>
+                          </span>
+                          <span className="text-[10px] opacity-80 font-normal">
+                            {flag.disabled ? (flag.reason ?? "Indisponível") : meta.hint}
+                          </span>
+                        </Button>
+                      );
+                    })}
                   </div>
+                  <Button
+                    type="button"
+                    size="sm"
+                    variant="ghost"
+                    onClick={() => { setChoice(null); setUrl(""); }}
+                    disabled={running}
+                    className="w-full justify-start"
+                  >
+                    Usar outro link
+                  </Button>
                   <p className="text-[11px] text-muted-foreground">
-                    💡 <strong>Scrape direto</strong>: rápido, mas falha em SPAs/sites protegidos.{" "}
-                    <strong>Firecrawl</strong>: extração avançada (renderiza JS).{" "}
-                    <strong>Perplexity</strong>: ignora a página e pesquisa o nicho na web.
+                    💡 Métodos abaixo do mínimo aparecem desabilitados; a alternativa <strong>Recomendada</strong> está destacada.
                   </p>
                 </div>
               </AlertDescription>
