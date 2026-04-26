@@ -1,7 +1,7 @@
 import { useEffect, useMemo, useRef, useState } from "react";
 import { useNavigate, useParams, Link } from "react-router-dom";
 import {
-  ArrowLeft, ChevronLeft, ChevronRight, Download, FileText, FileType, Loader2,
+  ArrowLeft, ChevronLeft, ChevronRight, Download, Eye, FileText, FileType, Loader2,
   RefreshCw, Rocket, Save, Sparkles, Wand2, ClipboardCheck, AlertTriangle,
 } from "lucide-react";
 import { Button } from "@/components/ui/button";
@@ -24,6 +24,7 @@ import { StrategyPicker } from "@/components/briefing/StrategyPicker";
 import { ReverseEngineerDialog } from "@/components/briefing/ReverseEngineerDialog";
 import { EmpathyMapPreview } from "@/components/briefing/EmpathyMapPreview";
 import { AdsSuggestionsPanel } from "@/components/briefing/AdsSuggestionsPanel";
+import { ExportPreviewDialog } from "@/components/briefing/ExportPreviewDialog";
 import {
   FIXED_SECTIONS, getStrategy, type Section, type StrategyId,
 } from "@/lib/briefingSchema";
@@ -52,6 +53,8 @@ const BriefingEditor = () => {
   const [highlightFields, setHighlightFields] = useState<Set<string>>(new Set());
   const [showEmpathyErrors, setShowEmpathyErrors] = useState(false);
   const [refillingEmpathy, setRefillingEmpathy] = useState(false);
+  const [previewOpen, setPreviewOpen] = useState(false);
+  const [previewFormat, setPreviewFormat] = useState<ExportFormat>("pdf");
 
   const skipNextSave = useRef(true);
 
@@ -290,6 +293,11 @@ const BriefingEditor = () => {
 
   const SectionIcon = section.icon;
 
+  const openPreview = (format: ExportFormat) => {
+    setPreviewFormat(format);
+    setPreviewOpen(true);
+  };
+
   const ExportDropdown = ({ size = "sm" as const, variant = "outline" as const, fullWidth = false }) => (
     <DropdownMenu>
       <DropdownMenuTrigger asChild>
@@ -304,15 +312,19 @@ const BriefingEditor = () => {
             : "Exportar"}
         </Button>
       </DropdownMenuTrigger>
-      <DropdownMenuContent align="end">
+      <DropdownMenuContent align="end" className="w-56">
+        <DropdownMenuItem onClick={() => openPreview("pdf")} disabled={exporting}>
+          <Eye className="mr-2 h-4 w-4" /> Pré-visualizar antes
+        </DropdownMenuItem>
+        <div className="my-1 h-px bg-border" />
         <DropdownMenuItem onClick={() => handleExport("pdf")} disabled={exporting}>
-          <FileType className="mr-2 h-4 w-4" /> PDF (.pdf)
+          <FileType className="mr-2 h-4 w-4" /> Baixar PDF (.pdf)
         </DropdownMenuItem>
         <DropdownMenuItem onClick={() => handleExport("doc")} disabled={exporting}>
-          <FileText className="mr-2 h-4 w-4" /> Word (.doc)
+          <FileText className="mr-2 h-4 w-4" /> Baixar Word (.doc)
         </DropdownMenuItem>
         <DropdownMenuItem onClick={() => handleExport("md")} disabled={exporting}>
-          <FileText className="mr-2 h-4 w-4" /> Markdown (.md)
+          <FileText className="mr-2 h-4 w-4" /> Baixar Markdown (.md)
         </DropdownMenuItem>
       </DropdownMenuContent>
     </DropdownMenu>
@@ -338,6 +350,9 @@ const BriefingEditor = () => {
             <RefreshCw className="mr-2 h-4 w-4" /> Reiniciar
           </Button>
           <ReportButton />
+          <Button variant="outline" size="sm" onClick={() => openPreview("pdf")}>
+            <Eye className="mr-2 h-4 w-4" /> Pré-visualizar
+          </Button>
           <ExportDropdown />
         </div>
       </AppHeader>
@@ -590,11 +605,22 @@ const BriefingEditor = () => {
             <Button variant="outline" size="sm" onClick={handleReset}>
               <RefreshCw className="mr-2 h-4 w-4" /> Reiniciar
             </Button>
+            <Button variant="outline" size="sm" onClick={() => openPreview("pdf")}>
+              <Eye className="mr-2 h-4 w-4" /> Pré-visualizar
+            </Button>
             <ReportButton />
             <ExportDropdown />
           </div>
         </main>
       </div>
+
+      <ExportPreviewDialog
+        open={previewOpen}
+        onOpenChange={setPreviewOpen}
+        data={data}
+        strategyId={strategyId}
+        initialFormat={previewFormat}
+      />
     </div>
   );
 };
