@@ -1,7 +1,7 @@
 import { useEffect, useMemo, useRef, useState } from "react";
 import { useNavigate, useParams, Link } from "react-router-dom";
 import {
-  ArrowLeft, ChevronLeft, ChevronRight, Download, FileText, FileType, Loader2,
+  ArrowLeft, ChevronLeft, ChevronRight, Download, Eye, FileText, FileType, Loader2,
   RefreshCw, Rocket, Save, Sparkles, Wand2, ClipboardCheck, AlertTriangle,
 } from "lucide-react";
 import { Button } from "@/components/ui/button";
@@ -24,6 +24,7 @@ import { StrategyPicker } from "@/components/briefing/StrategyPicker";
 import { ReverseEngineerDialog } from "@/components/briefing/ReverseEngineerDialog";
 import { EmpathyMapPreview } from "@/components/briefing/EmpathyMapPreview";
 import { AdsSuggestionsPanel } from "@/components/briefing/AdsSuggestionsPanel";
+import { ExportPreviewDialog } from "@/components/briefing/ExportPreviewDialog";
 import {
   FIXED_SECTIONS, getStrategy, type Section, type StrategyId,
 } from "@/lib/briefingSchema";
@@ -52,6 +53,8 @@ const BriefingEditor = () => {
   const [highlightFields, setHighlightFields] = useState<Set<string>>(new Set());
   const [showEmpathyErrors, setShowEmpathyErrors] = useState(false);
   const [refillingEmpathy, setRefillingEmpathy] = useState(false);
+  const [previewOpen, setPreviewOpen] = useState(false);
+  const [previewFormat, setPreviewFormat] = useState<ExportFormat>("pdf");
 
   const skipNextSave = useRef(true);
 
