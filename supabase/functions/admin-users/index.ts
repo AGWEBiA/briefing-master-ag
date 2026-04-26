@@ -133,6 +133,28 @@ Deno.serve(async (req) => {
       return json({ ok: true });
     }
 
+    // Toggle rápido do flag admin (usado pela lista) — não toca em email/senha/perfil
+    if (action === "set_admin") {
+      const id = String(body.id ?? "");
+      const is_admin = !!body.is_admin;
+      if (!id) return json({ error: "id required" }, 400);
+      if (!is_admin && id === callerId) {
+        return json({ error: "Você não pode remover seu próprio admin." }, 400);
+      }
+      if (is_admin) {
+        const { error: ue } = await admin.from("user_roles").upsert(
+          { user_id: id, role: "admin" },
+          { onConflict: "user_id,role" },
+        );
+        if (ue) return json({ error: ue.message }, 400);
+      } else {
+        const { error: de } = await admin
+          .from("user_roles").delete().eq("user_id", id).eq("role", "admin");
+        if (de) return json({ error: de.message }, 400);
+      }
+      return json({ ok: true, id, is_admin });
+    }
+
     if (action === "create") {
       const email = String(body.email ?? "").trim();
       const password = String(body.password ?? "");
