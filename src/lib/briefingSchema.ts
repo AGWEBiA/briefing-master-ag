@@ -33,7 +33,7 @@ export interface Section {
 }
 
 export type StrategyId =
-  | "lp" | "lo" | "ls" | "li" | "pe" | "af" | "cp";
+  | "lp" | "lo" | "ls" | "li" | "pe" | "af" | "cp" | "vd";
 
 export interface Strategy {
   id: StrategyId;
