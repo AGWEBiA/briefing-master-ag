@@ -51,6 +51,7 @@ const BriefingEditor = () => {
   const [suggestingStrategy, setSuggestingStrategy] = useState(false);
   const [highlightFields, setHighlightFields] = useState<Set<string>>(new Set());
   const [showEmpathyErrors, setShowEmpathyErrors] = useState(false);
+  const [refillingEmpathy, setRefillingEmpathy] = useState(false);
 
   const skipNextSave = useRef(true);
 
