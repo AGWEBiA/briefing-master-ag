@@ -1,11 +1,11 @@
-import { useEffect, useMemo, useState } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
 import {
   Dialog, DialogContent, DialogHeader, DialogTitle, DialogDescription,
 } from "@/components/ui/dialog";
 import { Button } from "@/components/ui/button";
 import { Tabs, TabsList, TabsTrigger, TabsContent } from "@/components/ui/tabs";
 import { ScrollArea } from "@/components/ui/scroll-area";
-import { Download, FileText, FileType, Loader2, Eye } from "lucide-react";
+import { Download, FileText, FileType, Loader2, Eye, Monitor, FileStack } from "lucide-react";
 import {
   exportBriefingMarkdown,
   exportBriefingDocx,
@@ -14,6 +14,8 @@ import {
   downloadMarkdown,
   type ExportFormat,
 } from "@/lib/exportBriefing";
+
+type DocLayout = "a4" | "responsive";
 
 type Props = {
   open: boolean;
