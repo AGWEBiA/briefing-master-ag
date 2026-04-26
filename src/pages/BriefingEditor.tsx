@@ -48,6 +48,7 @@ const BriefingEditor = () => {
   const [exporting, setExporting] = useState(false);
   const [exportingFormat, setExportingFormat] = useState<ExportFormat | "report" | null>(null);
   const [suggesting, setSuggesting] = useState(false);
+  const [suggestingStrategy, setSuggestingStrategy] = useState(false);
   const [highlightFields, setHighlightFields] = useState<Set<string>>(new Set());
   const [showEmpathyErrors, setShowEmpathyErrors] = useState(false);
 
@@ -219,7 +220,38 @@ const BriefingEditor = () => {
     if (idx >= 0) setCurrentIndex(idx);
   };
 
-  if (loading) {
+  const handleSuggestStrategy = async (overwrite = false) => {
+    if (!strategyId) {
+      toast.error("Escolha uma estratégia antes de pedir sugestões.");
+      return;
+    }
+    const hasBase =
+      (data.descricaoAvatar?.trim().length ?? 0) > 20 ||
+      (data.me_dores?.trim().length ?? 0) > 20 ||
+      (data.me_ganhos?.trim().length ?? 0) > 20;
+    if (!hasBase) {
+      toast.error("Preencha primeiro o Avatar e o Mapa da Empatia.");
+      return;
+    }
+    setSuggestingStrategy(true);
+    const { data: res, error } = await supabase.functions.invoke("suggest-strategy", {
+      body: { briefing: data, strategyId, overwrite },
+    });
+    setSuggestingStrategy(false);
+    if (error || res?.error) {
+      toast.error(res?.error ?? (error as { message?: string })?.message ?? "Falha ao sugerir estratégia.");
+      return;
+    }
+    const incoming = (res?.data ?? {}) as Record<string, string>;
+    const filledKeys = Object.keys(incoming);
+    if (filledKeys.length === 0) {
+      toast.info("Todos os campos da estratégia já estavam preenchidos. Use 'Sobrescrever' para regenerar.");
+      return;
+    }
+    setData((prev) => ({ ...prev, ...incoming }));
+    setHighlightFields(new Set(filledKeys));
+    toast.success(`${filledKeys.length} campo(s) da estratégia preenchido(s) pela IA.`);
+  };
     return (
       <div className="flex min-h-screen items-center justify-center">
         <Loader2 className="h-6 w-6 animate-spin text-primary" />
