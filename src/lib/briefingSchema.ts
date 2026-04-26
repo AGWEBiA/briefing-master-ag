@@ -55,7 +55,13 @@ export const FIXED_SECTIONS: Section[] = [
         { id: "nomeProduto", label: "Nome do Produto", type: "text", required: true, placeholder: "Ex: Método Tráfego Avançado" },
         { id: "nicho", label: "Nicho de Mercado", type: "text", required: true, placeholder: "Ex: Marketing Digital, Emagrecimento..." },
         { id: "categoriaProduto", label: "Categoria do Produto", type: "select", options: ["Curso Online", "Mentoria", "Consultoria", "Evento/Workshop", "Assinatura/Comunidade", "E-book/Material Digital", "Software/Ferramenta"] },
-        { id: "formatoEntrega", label: "Formato de Entrega", type: "select", options: ["Online ao Vivo", "Gravado/Assíncrono", "Híbrido", "Presencial"] },
+        { id: "formatoEntrega", label: "Formato de Entrega", type: "select",
+          options: ["Online ao Vivo", "Gravado/Assíncrono", "Híbrido", "Presencial"],
+          hint: "As opções mudam automaticamente quando a categoria for Software/Ferramenta.",
+          optionsFn: (d) => d.categoriaProduto === "Software/Ferramenta"
+            ? ["SaaS (Web)", "App Mobile (iOS/Android)", "Aplicativo Desktop", "API / Backend", "Plugin / Extensão", "On-premise / Self-hosted", "Híbrido (Web + App)"]
+            : ["Online ao Vivo", "Gravado/Assíncrono", "Híbrido", "Presencial"],
+        },
         { id: "transformacaoPrincipal", label: "Transformação Principal", type: "textarea", rows: 3, required: true, hint: "Qual é o resultado final que o cliente alcança?" },
         { id: "tempoResultado", label: "Tempo para Ver o Resultado", type: "text", placeholder: "Ex: 30 dias, 3 meses..." },
         { id: "precoProduto", label: "Preço do Produto Principal", type: "text", required: true, placeholder: "R$ 1.997,00" },
