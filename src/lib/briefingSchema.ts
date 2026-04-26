@@ -1,6 +1,7 @@
 import {
   Package, Users, Trophy, ClipboardList, Target,
   Ticket, Megaphone, Sprout, Lock, Infinity as InfinityIcon, Handshake, Puzzle,
+  HeartHandshake,
   type LucideIcon,
 } from "lucide-react";
 
