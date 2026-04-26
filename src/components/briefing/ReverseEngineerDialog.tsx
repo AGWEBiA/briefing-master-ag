@@ -17,6 +17,7 @@ import { Link } from "react-router-dom";
 
 import { supabase } from "@/integrations/supabase/client";
 import { useAuth } from "@/contexts/AuthContext";
+import { useUserRole } from "@/hooks/useUserRole";
 
 type Engine = "lovable" | "openai" | "gemini";
 type ForceMethod = "fetch" | "firecrawl" | "perplexity";
@@ -67,6 +68,7 @@ const PAGE_TYPE_BADGE: Record<PageType, { label: string; cls: string }> = {
 
 export const ReverseEngineerDialog = ({ onApply, trigger }: Props) => {
   const { user } = useAuth();
+  const { isAdmin } = useUserRole();
   const [open, setOpen] = useState(false);
   const [url, setUrl] = useState("");
   const [engine, setEngine] = useState<Engine>("lovable");
@@ -223,10 +225,10 @@ export const ReverseEngineerDialog = ({ onApply, trigger }: Props) => {
               <SelectContent>
                 <SelectItem value="lovable">✨ Lovable AI (Gemini Flash) — pré-configurado</SelectItem>
                 <SelectItem value="openai" disabled={!available.openai}>
-                  🤖 OpenAI {!available.openai && "(conecte em Integrações)"}
+                  🤖 OpenAI {!available.openai && (isAdmin ? "(conecte em Integrações)" : "(indisponível)")}
                 </SelectItem>
                 <SelectItem value="gemini" disabled={!available.gemini}>
-                  ✨ Google Gemini {!available.gemini && "(conecte em Integrações)"}
+                  ✨ Google Gemini {!available.gemini && (isAdmin ? "(conecte em Integrações)" : "(indisponível)")}
                 </SelectItem>
               </SelectContent>
             </Select>
@@ -237,8 +239,8 @@ export const ReverseEngineerDialog = ({ onApply, trigger }: Props) => {
               <span className="font-medium">Extração de conteúdo:</span> usamos leitura direta da página por padrão.{" "}
               {available.firecrawl && "🔥 Firecrawl ativo. "}
               {available.perplexity && "🔎 Perplexity ativo. "}
-              {!available.firecrawl && !available.perplexity && "Conecte Firecrawl ou Perplexity para resultados melhores em sites que bloqueiam scraping."}{" "}
-              <Link to="/integrations" className="text-primary underline">Gerenciar integrações</Link>
+              {!available.firecrawl && !available.perplexity && (isAdmin ? "Conecte Firecrawl ou Perplexity para resultados melhores em sites que bloqueiam scraping." : "Para resultados melhores em sites que bloqueiam scraping, peça ao administrador para conectar Firecrawl ou Perplexity.")}{" "}
+              {isAdmin && <Link to="/integrations" className="text-primary underline">Gerenciar integrações</Link>}
             </AlertDescription>
           </Alert>
 
@@ -382,6 +384,14 @@ export const ReverseEngineerDialog = ({ onApply, trigger }: Props) => {
                       const wasTried = tried.includes(id);
 
                       if (!flag.available) {
+                        if (!isAdmin) {
+                          return (
+                            <Button key={id} type="button" size="sm" variant="outline" disabled className="h-auto py-2 flex flex-col items-start gap-0.5">
+                              <span>{meta.icon} {meta.label}</span>
+                              <span className="text-[10px] text-muted-foreground">Indisponível</span>
+                            </Button>
+                          );
+                        }
                         return (
                           <Button key={id} type="button" size="sm" variant="outline" asChild className="h-auto py-2">
                             <Link to="/integrations" className="flex flex-col items-start gap-0.5 w-full">
