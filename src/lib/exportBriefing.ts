@@ -733,23 +733,23 @@ export function exportBriefingPdf(
     y += 8;
   };
 
-  // ── Mapa da Empatia em grade 3x2 com cards coloridos
+  // ── Mapa da Empatia em grade 3x2 com cards coloridos (sem emojis)
   const drawEmpathyGrid = () => {
     const quads: Array<{
-      id: string; emoji: string; label: string; fill: [number, number, number]; border: [number, number, number]; titleColor: [number, number, number];
+      id: string; label: string; fill: [number, number, number]; border: [number, number, number]; titleColor: [number, number, number];
     }> = [
-      { id: "me_pensaSente", emoji: "🧠", label: "Pensa & Sente", fill: [238, 242, 255], border: [199, 210, 254], titleColor: [67, 56, 202] },
-      { id: "me_ve",         emoji: "👀", label: "Vê",            fill: [236, 253, 245], border: [167, 243, 208], titleColor: [4, 120, 87] },
-      { id: "me_ouve",       emoji: "👂", label: "Ouve",          fill: [255, 247, 237], border: [254, 215, 170], titleColor: [194, 65, 12] },
-      { id: "me_falaFaz",    emoji: "💬", label: "Fala & Faz",    fill: [243, 244, 246], border: [209, 213, 219], titleColor: [55, 65, 81] },
-      { id: "me_dores",      emoji: "😣", label: "Dores",         fill: [254, 242, 242], border: [254, 202, 202], titleColor: [185, 28, 28] },
-      { id: "me_ganhos",     emoji: "🏆", label: "Ganhos",        fill: [239, 246, 255], border: [191, 219, 254], titleColor: [29, 78, 216] },
+      { id: "me_pensaSente", label: "Pensa & Sente", fill: [238, 242, 255], border: [199, 210, 254], titleColor: [67, 56, 202] },
+      { id: "me_ve",         label: "Vê",            fill: [236, 253, 245], border: [167, 243, 208], titleColor: [4, 120, 87] },
+      { id: "me_ouve",       label: "Ouve",          fill: [255, 247, 237], border: [254, 215, 170], titleColor: [194, 65, 12] },
+      { id: "me_falaFaz",    label: "Fala & Faz",    fill: [243, 244, 246], border: [209, 213, 219], titleColor: [55, 65, 81] },
+      { id: "me_dores",      label: "Dores",         fill: [254, 242, 242], border: [254, 202, 202], titleColor: [185, 28, 28] },
+      { id: "me_ganhos",     label: "Ganhos",        fill: [239, 246, 255], border: [191, 219, 254], titleColor: [29, 78, 216] },
     ];
 
     const gap = 8;
     const cardW = (contentW - gap * 2) / 3;
     const cardPad = 10;
-    const titleH = 14;
+    const titleH = 16;
 
     // Calcular alturas de cada card baseado no conteúdo
     doc.setFont("helvetica", "normal");
@@ -759,16 +759,20 @@ export function exportBriefingPdf(
       let maxH = 0;
       for (let col = 0; col < 3; col++) {
         const q = quads[row * 3 + col];
-        const text = (data[q.id] ?? "").trim() || "Não preenchido";
+        const text = stripEmojis((data[q.id] ?? "").trim()) || "Não preenchido";
         const lines = doc.splitTextToSize(text, cardW - cardPad * 2);
         const h = titleH + lines.length * 11 + cardPad * 2;
         if (h > maxH) maxH = h;
       }
-      rowsHeights.push(Math.max(maxH, 70));
+      rowsHeights.push(Math.max(maxH, 80));
     }
 
     const totalH = rowsHeights[0] + rowsHeights[1] + gap;
-    ensureSpace(totalH + 4);
+    // Se não couber, força nova página para manter o grid intacto
+    if (y + totalH + 4 > pageH - margin - 32) {
+      doc.addPage();
+      y = margin;
+    }
 
     let cy = y;
     for (let row = 0; row < 2; row++) {
@@ -776,7 +780,7 @@ export function exportBriefingPdf(
       for (let col = 0; col < 3; col++) {
         const q = quads[row * 3 + col];
         const cx = margin + col * (cardW + gap);
-        const text = (data[q.id] ?? "").trim();
+        const text = stripEmojis((data[q.id] ?? "").trim());
         const display = text || "Não preenchido";
 
         // card
@@ -785,23 +789,27 @@ export function exportBriefingPdf(
         doc.setLineWidth(0.5);
         doc.roundedRect(cx, cy, cardW, rowH, 4, 4, "FD");
 
+        // bullet colorido (substitui emoji)
+        setFill(q.titleColor);
+        doc.circle(cx + cardPad + 2.5, cy + cardPad + 3.5, 2.5, "F");
+
         // título
         setText(q.titleColor);
         doc.setFont("helvetica", "bold");
         doc.setFontSize(8.5);
-        doc.text(`${q.emoji}  ${q.label.toUpperCase()}`, cx + cardPad, cy + cardPad + 6);
+        doc.text(q.label.toUpperCase(), cx + cardPad + 10, cy + cardPad + 6);
 
         // texto
         setText(text ? PALETTE.ink : PALETTE.faint);
         doc.setFont("helvetica", text ? "normal" : "italic");
         doc.setFontSize(9);
         const lines = doc.splitTextToSize(display, cardW - cardPad * 2);
-        let ty = cy + cardPad + titleH + 6;
+        let ty = cy + cardPad + titleH + 4;
         for (const ln of lines) { doc.text(ln, cx + cardPad, ty); ty += 11; }
       }
       cy += rowH + gap;
     }
-    y = cy + 6;
+    y = cy + 8;
   };
 
   // ============================================================
@@ -812,13 +820,14 @@ export function exportBriefingPdf(
 
   const blockLetters = ["A", "B", "C", "D", "E", "F"];
   FIXED_SECTIONS.forEach((s, i) => {
-    writeBlockHeader(blockLetters[i] ?? `${i + 1}`, s.title, PALETTE.brand);
+    // Cada bloco principal começa em nova página → diagramação consistente, sem títulos órfãos
+    writeBlockHeader(blockLetters[i] ?? `${i + 1}`, s.title, PALETTE.brand, true);
 
     if (s.id === "avatar") {
       drawCallout("Descrição do Avatar", data.descricaoAvatar ?? "");
-      writeNumberedList("😣 Dores", ["dor1", "dor2", "dor3"]);
-      writeNumberedList("🎯 Desejos", ["desejo1", "desejo2", "desejo3"]);
-      writeNumberedList("🛡 Objeções", ["objecao1", "objecao2", "objecao3"]);
+      writeNumberedList("Dores", ["dor1", "dor2", "dor3"], [185, 28, 28]);
+      writeNumberedList("Desejos", ["desejo1", "desejo2", "desejo3"], [22, 163, 74]);
+      writeNumberedList("Objeções", ["objecao1", "objecao2", "objecao3"], [217, 119, 6]);
       writeKV("Nível de Consciência", data.nivelConsciencia ?? "");
       writeKV("Canais Online", data.canaisOnline ?? "");
       writeKV("Resumo do Mapa da Empatia", data.empatiaResumo ?? "");
@@ -831,7 +840,8 @@ export function exportBriefingPdf(
   });
 
   if (strat) {
-    writeBlockHeader(strat.emoji, `${strat.name} — Detalhamento`, PALETTE.ok);
+    // Letra "E" para "Estratégia" (sem emoji)
+    writeBlockHeader("E", `${strat.name} — Detalhamento`, PALETTE.ok, true);
     strat.sections.forEach((sec) => {
       writeSubHeader(sec.title);
       const fields = sec.groups.flatMap((g) => g.fields ?? []);
