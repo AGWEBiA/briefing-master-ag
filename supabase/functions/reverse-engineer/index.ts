@@ -607,12 +607,15 @@ Deno.serve(async (req) => {
       engine, apiKey: engineKey, model: engineModel, systemPrompt, userPrompt,
     });
 
+    const finalMethod: ScrapeMethod = scrapeMethod;
     return new Response(
       JSON.stringify({
         data: filled,
-        scrapeMethod,
-        usedFirecrawl: scrapeMethod === "firecrawl",
-        usedPerplexity: !!byProvider.perplexity?.api_key && (!!research || scrapeMethod === "perplexity-fallback"),
+        scrapeMethod: finalMethod,
+        usedFirecrawl: finalMethod === "firecrawl",
+        usedPerplexity:
+          !!byProvider.perplexity?.api_key &&
+          (!!research || finalMethod === "perplexity-fallback"),
         citations,
         engine,
         model: engineModel,
