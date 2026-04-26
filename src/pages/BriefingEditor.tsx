@@ -373,8 +373,8 @@ const BriefingEditor = () => {
 
               {/* Status do Mapa da Empatia */}
               {section.id === "mapaEmpatia" && !empathyValidation.ok && (
-                <div className="flex items-start gap-2 rounded-lg border border-warning/40 bg-warning/10 p-3 text-sm">
-                  <AlertTriangle className="mt-0.5 h-4 w-4 shrink-0 text-warning" />
+                <div className="flex items-start gap-2 rounded-lg border border-destructive/40 bg-destructive/10 p-3 text-sm">
+                  <AlertTriangle className="mt-0.5 h-4 w-4 shrink-0 text-destructive" />
                   <div>
                     <p className="font-medium">
                       Mapa da Empatia incompleto — {empathyValidation.errors.length} quadrante(s) abaixo do mínimo.
