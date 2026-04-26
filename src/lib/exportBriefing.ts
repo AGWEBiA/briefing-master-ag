@@ -580,9 +580,20 @@ export function exportBriefingPdf(
   };
 
   // ── Cabeçalho de bloco (faixa colorida + tag)
-  const writeBlockHeader = (letter: string, title: string, color: [number, number, number] = PALETTE.brand) => {
-    ensureSpace(48);
-    y += 6;
+  // forceNewPage: força bloco a começar em nova página (evita títulos órfãos)
+  const writeBlockHeader = (
+    letter: string,
+    title: string,
+    color: [number, number, number] = PALETTE.brand,
+    forceNewPage = false,
+  ) => {
+    if (forceNewPage && y > margin + 4) {
+      doc.addPage();
+      y = margin;
+    } else {
+      ensureSpace(56);
+    }
+    y += 4;
 
     // tag
     doc.setFont("helvetica", "bold");
@@ -599,7 +610,7 @@ export function exportBriefingPdf(
     setText(PALETTE.ink);
     doc.setFont("helvetica", "bold");
     doc.setFontSize(15);
-    doc.text(title, margin + tagW + 10, y + 12);
+    doc.text(stripEmojis(title), margin + tagW + 10, y + 12);
     y += tagH + 8;
 
     // linha base
@@ -609,24 +620,25 @@ export function exportBriefingPdf(
     y += 14;
   };
 
-  // ── Sub-cabeçalho (para estratégia.sections)
+  // ── Sub-cabeçalho (para estratégia.sections) — mantém junto com o conteúdo seguinte
   const writeSubHeader = (text: string) => {
-    ensureSpace(22);
-    y += 4;
+    // Garante espaço para o subtítulo + ao menos 2 linhas de conteúdo (≈ 60pt)
+    ensureSpace(60);
+    y += 6;
     setText([30, 64, 175]);
     doc.setFont("helvetica", "bold");
-    doc.setFontSize(11.5);
-    doc.text(text, margin, y);
-    y += 8;
+    doc.setFontSize(12);
+    doc.text(stripEmojis(text), margin, y);
+    y += 10;
     setDraw(PALETTE.rule);
     doc.setLineWidth(0.5);
     doc.line(margin, y, pageW - margin, y);
-    y += 10;
+    y += 12;
   };
 
   // ── Caixa de "Descrição"
   const drawCallout = (label: string, value: string) => {
-    const text = (value ?? "").trim();
+    const text = stripEmojis((value ?? "").trim());
     const display = text || "Não preenchido";
     doc.setFont("helvetica", "normal");
     doc.setFontSize(10.5);
@@ -654,14 +666,15 @@ export function exportBriefingPdf(
     let ty = boxY + 28;
     for (const ln of lines) { doc.text(ln, boxX + 12, ty); ty += lineH; }
 
-    y = boxY + innerH + 10;
+    y = boxY + innerH + 12;
   };
 
-  // ── Linha "label / valor"
+  // ── Linha "label / valor" (mantém label + ao menos 1 linha juntos)
   const writeKV = (label: string, value: string) => {
-    const text = (value ?? "").trim();
+    const text = stripEmojis((value ?? "").trim());
     const display = text || "Não preenchido";
-    ensureSpace(18);
+    // Reserva espaço mínimo: label (12pt) + 1 linha de texto (13pt) + spacing
+    ensureSpace(34);
     setText(PALETTE.muted);
     doc.setFont("helvetica", "bold");
     doc.setFontSize(8.5);
@@ -674,35 +687,36 @@ export function exportBriefingPdf(
     const lines = doc.splitTextToSize(display, contentW);
     const lh = 13;
     for (const ln of lines) { ensureSpace(lh); doc.text(ln, margin, y); y += lh; }
-    y += 8;
+    y += 10;
   };
 
-  // ── Lista numerada (Dores/Desejos/Objeções)
-  const writeNumberedList = (heading: string, ids: string[]) => {
-    ensureSpace(20);
-    setText(PALETTE.body);
+  // ── Lista numerada (Dores/Desejos/Objeções) — usa marcador colorido em vez de emoji
+  const writeNumberedList = (heading: string, ids: string[], accent: [number, number, number] = PALETTE.brand) => {
+    ensureSpace(36);
+    // marcador colorido + texto do heading
+    setFill(accent);
+    doc.roundedRect(margin, y - 8, 4, 12, 2, 2, "F");
+    setText(PALETTE.ink);
     doc.setFont("helvetica", "bold");
-    doc.setFontSize(10.5);
-    doc.text(heading, margin, y);
-    y += 14;
+    doc.setFontSize(11);
+    doc.text(stripEmojis(heading), margin + 10, y);
+    y += 16;
 
     ids.forEach((id, idx) => {
-      const text = (data[id] ?? "").trim();
+      const text = stripEmojis((data[id] ?? "").trim());
       const display = text || "Não preenchido";
       const num = `${idx + 1}.`;
       doc.setFont("helvetica", "bold");
       doc.setFontSize(10);
-      setText(PALETTE.brand);
       const numW = doc.getTextWidth(num) + 6;
 
       doc.setFont("helvetica", text ? "normal" : "italic");
       doc.setFontSize(10);
-      setText(text ? PALETTE.ink : PALETTE.faint);
       const lines = doc.splitTextToSize(display, contentW - numW);
       const lh = 13;
       ensureSpace(lh);
       // número
-      setText(PALETTE.brand);
+      setText(accent);
       doc.setFont("helvetica", "bold");
       doc.text(num, margin, y);
       // texto
@@ -714,8 +728,9 @@ export function exportBriefingPdf(
         ensureSpace(lh);
         doc.text(lines[i], margin + numW, y); y += lh;
       }
+      y += 2;
     });
-    y += 6;
+    y += 8;
   };
 
   // ── Mapa da Empatia em grade 3x2 com cards coloridos
