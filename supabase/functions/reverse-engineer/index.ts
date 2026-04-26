@@ -36,12 +36,13 @@ const FIELD_DESCRIPTIONS: Record<string, string> = {
   canaisOnline: "Canais online onde o avatar está (ex.: Instagram, YouTube).",
   empatiaResumo: "Síntese curta do mapa da empatia do avatar.",
   // Mapa da empatia
-  me_pensaSente: "O que o avatar PENSA e SENTE.",
-  me_ve: "O que o avatar VÊ no ambiente/mercado.",
-  me_ouve: "O que o avatar OUVE de pessoas e canais.",
-  me_falaFaz: "O que o avatar FALA e FAZ publicamente.",
-  me_dores: "Dores: medos, frustrações e obstáculos.",
-  me_ganhos: "Ganhos: desejos, necessidades e métricas de sucesso.",
+  // Mapa da empatia (preencha cada quadrante com no mínimo 3-4 frases concretas)
+  me_pensaSente: "PENSA E SENTE — mundo interior do avatar: preocupações reais, sonhos, aspirações, crenças limitantes, sentimentos que ele NÃO admite em voz alta. Mínimo 3 frases concretas. Não use generalidades.",
+  me_ve: "VÊ — ambiente visual: o que o avatar enxerga no mercado e ao redor (concorrentes faturando, anúncios, estilo de vida de amigos, ofertas a que está exposto). Mínimo 3 itens concretos.",
+  me_ouve: "OUVE — vozes que influenciam: o que dizem família, amigos, chefe, parceiro, gurus, podcasts, comunidades. Cite os tipos de fontes e o teor (apoio, pressão, ruído). Mínimo 3 fontes.",
+  me_falaFaz: "FALA E FAZ — comportamento público vs. privado: o que posta, o que consome, hábitos diários, contradições entre o que diz e o que faz. Mínimo 3 comportamentos específicos.",
+  me_dores: "DORES — medos concretos, frustrações recorrentes, obstáculos reais (tempo, dinheiro, conhecimento, suporte) e riscos percebidos ao tomar a decisão de compra. Mínimo 4 itens.",
+  me_ganhos: "GANHOS — desejos profundos + métricas concretas de sucesso (números, prazos, status). Inclua ganhos tangíveis (dinheiro, tempo) e intangíveis (orgulho, reconhecimento). Mínimo 4 itens.",
   // Posicionamento
   nomeExpert: "Nome do expert/produtor.",
   audienciaAtual: "Tamanho/origem da audiência atual.",

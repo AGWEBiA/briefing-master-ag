@@ -16,6 +16,8 @@ export interface Field {
   hint?: string;
   rows?: number;
   options?: string[];
+  // Permite trocar `options` em runtime com base nos valores atuais do briefing
+  optionsFn?: (data: Record<string, string>) => string[];
 }
 
 export interface SectionGroup {
@@ -53,7 +55,13 @@ export const FIXED_SECTIONS: Section[] = [
         { id: "nomeProduto", label: "Nome do Produto", type: "text", required: true, placeholder: "Ex: Método Tráfego Avançado" },
         { id: "nicho", label: "Nicho de Mercado", type: "text", required: true, placeholder: "Ex: Marketing Digital, Emagrecimento..." },
         { id: "categoriaProduto", label: "Categoria do Produto", type: "select", options: ["Curso Online", "Mentoria", "Consultoria", "Evento/Workshop", "Assinatura/Comunidade", "E-book/Material Digital", "Software/Ferramenta"] },
-        { id: "formatoEntrega", label: "Formato de Entrega", type: "select", options: ["Online ao Vivo", "Gravado/Assíncrono", "Híbrido", "Presencial"] },
+        { id: "formatoEntrega", label: "Formato de Entrega", type: "select",
+          options: ["Online ao Vivo", "Gravado/Assíncrono", "Híbrido", "Presencial"],
+          hint: "As opções mudam automaticamente quando a categoria for Software/Ferramenta.",
+          optionsFn: (d) => d.categoriaProduto === "Software/Ferramenta"
+            ? ["SaaS (Web)", "App Mobile (iOS/Android)", "Aplicativo Desktop", "API / Backend", "Plugin / Extensão", "On-premise / Self-hosted", "Híbrido (Web + App)"]
+            : ["Online ao Vivo", "Gravado/Assíncrono", "Híbrido", "Presencial"],
+        },
         { id: "transformacaoPrincipal", label: "Transformação Principal", type: "textarea", rows: 3, required: true, hint: "Qual é o resultado final que o cliente alcança?" },
         { id: "tempoResultado", label: "Tempo para Ver o Resultado", type: "text", placeholder: "Ex: 30 dias, 3 meses..." },
         { id: "precoProduto", label: "Preço do Produto Principal", type: "text", required: true, placeholder: "R$ 1.997,00" },
@@ -97,12 +105,30 @@ export const FIXED_SECTIONS: Section[] = [
     icon: HeartHandshake,
     groups: [
       { fields: [
-        { id: "me_pensaSente", label: "O que PENSA e SENTE?", type: "textarea", rows: 3, hint: "Preocupações, sonhos, aspirações, o que realmente importa (mesmo que não diga em voz alta)." },
-        { id: "me_ve", label: "O que VÊ?", type: "textarea", rows: 3, hint: "Ambiente, amigos, ofertas do mercado, o que o cerca no dia a dia." },
-        { id: "me_ouve", label: "O que OUVE?", type: "textarea", rows: 3, hint: "O que dizem amigos, família, chefe, influenciadores. Quais canais consome?" },
-        { id: "me_falaFaz", label: "O que FALA e FAZ?", type: "textarea", rows: 3, hint: "Postura em público, comportamentos, com quem se relaciona, o que compartilha." },
-        { id: "me_dores", label: "DORES (medos, frustrações, obstáculos)", type: "textarea", rows: 3, hint: "O que o impede de chegar onde quer? Riscos percebidos." },
-        { id: "me_ganhos", label: "GANHOS (desejos, necessidades, métricas de sucesso)", type: "textarea", rows: 3, hint: "O que ele entende como sucesso? Como mede progresso?" },
+        { id: "me_pensaSente", label: "🧠 O que PENSA e SENTE?",
+          type: "textarea", rows: 4,
+          placeholder: "Ex.: Sente-se travado no faturamento, acredita que precisa estudar mais antes de agir, tem medo de não ser bom o suficiente...",
+          hint: "Mundo interior: preocupações, sonhos, aspirações reais, crenças limitantes, o que tira o sono. Inclua sentimentos que ele NÃO admite em voz alta. Mínimo 3 frases." },
+        { id: "me_ve", label: "👀 O que VÊ?",
+          type: "textarea", rows: 4,
+          placeholder: "Ex.: Concorrentes faturando alto no Instagram, anúncios constantes de cursos prometendo 6 dígitos, amigos comprando coisas que ele ainda não pode...",
+          hint: "Ambiente visual: o que enxerga no mercado, o que os concorrentes oferecem, qual é o estilo de vida das pessoas ao redor, ofertas a que está exposto. Mínimo 3 itens concretos." },
+        { id: "me_ouve", label: "👂 O que OUVE?",
+          type: "textarea", rows: 4,
+          placeholder: "Ex.: Família dizendo 'arruma um emprego de verdade', podcasts de empreendedorismo, gurus prometendo método infalível, parceiro(a) cobrando estabilidade...",
+          hint: "O que dizem família, amigos, chefe, influenciadores, gurus, podcasts, comunidades. Cite canais e tipos de mensagem (apoio, pressão, ruído). Mínimo 3 fontes diferentes." },
+        { id: "me_falaFaz", label: "💬 O que FALA e FAZ?",
+          type: "textarea", rows: 4,
+          placeholder: "Ex.: Posta prints de faturamento mesmo quando o mês foi ruim, consome conteúdo gratuito o tempo todo mas raramente compra, fala que vai começar segunda-feira...",
+          hint: "Comportamento público vs. privado: o que posta, com quem se relaciona, hábitos diários, contradições entre o que diz e o que faz. Mínimo 3 comportamentos específicos." },
+        { id: "me_dores", label: "😣 DORES (medos, frustrações, obstáculos)",
+          type: "textarea", rows: 4,
+          placeholder: "Ex.: Medo de investir e não ter retorno, frustração com cursos que prometem demais, falta de tempo entre trabalho CLT e projeto pessoal...",
+          hint: "Liste medos concretos, frustrações recorrentes, obstáculos reais (tempo, dinheiro, conhecimento, suporte) e riscos percebidos ao tomar a decisão. Mínimo 4 itens." },
+        { id: "me_ganhos", label: "🏆 GANHOS (desejos, necessidades, métricas de sucesso)",
+          type: "textarea", rows: 4,
+          placeholder: "Ex.: Faturar R$ 10k/mês de forma previsível, sair do CLT em 12 meses, ter autoridade reconhecida no nicho, viajar trabalhando do notebook...",
+          hint: "Desejos profundos + métricas concretas de sucesso (números, prazos, status). Inclua ganhos tangíveis (dinheiro, tempo) e intangíveis (orgulho, reconhecimento). Mínimo 4 itens." },
       ]},
     ],
   },

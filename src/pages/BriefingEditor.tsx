@@ -1,14 +1,17 @@
 import { useEffect, useMemo, useRef, useState } from "react";
 import { useNavigate, useParams, Link } from "react-router-dom";
 import {
-  ArrowLeft, ChevronLeft, ChevronRight, Download, Loader2,
-  RefreshCw, Rocket, Save, Wand2,
+  ArrowLeft, ChevronLeft, ChevronRight, Download, FileText, FileType, Loader2,
+  RefreshCw, Rocket, Save, Sparkles, Wand2,
 } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardHeader } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
 import { Input } from "@/components/ui/input";
 import { Sheet, SheetContent, SheetTrigger } from "@/components/ui/sheet";
+import {
+  DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuTrigger,
+} from "@/components/ui/dropdown-menu";
 import { toast } from "sonner";
 import { Menu } from "lucide-react";
 
@@ -22,7 +25,7 @@ import { ReverseEngineerDialog } from "@/components/briefing/ReverseEngineerDial
 import {
   FIXED_SECTIONS, getStrategy, type Section, type StrategyId,
 } from "@/lib/briefingSchema";
-import { downloadMarkdown, exportBriefingMarkdown } from "@/lib/exportBriefing";
+import { exportBriefing, type ExportFormat } from "@/lib/exportBriefing";
 
 type Data = Record<string, string>;
 
@@ -100,16 +103,25 @@ const BriefingEditor = () => {
   const isLast = currentIndex === sections.length - 1;
   const isFirst = currentIndex === 0;
 
-  const handleExport = () => {
-    const { filename, content } = exportBriefingMarkdown(data, strategyId);
-    downloadMarkdown(filename, content);
-    toast.success("Briefing exportado");
+  const [exporting, setExporting] = useState(false);
+  const [suggesting, setSuggesting] = useState(false);
+
+  const handleExport = (format: ExportFormat = "md") => {
+    setExporting(true);
+    try {
+      const filename = exportBriefing(format, data, strategyId);
+      toast.success(`Briefing exportado: ${filename}`);
+    } catch (e) {
+      toast.error(`Falha ao exportar: ${(e as Error).message}`);
+    } finally {
+      setExporting(false);
+    }
   };
 
   const handleFinalize = async () => {
     if (!id) return;
     await supabase.from("briefings").update({ is_complete: true }).eq("id", id);
-    handleExport();
+    handleExport("pdf");
   };
 
   const handleReset = async () => {
@@ -122,10 +134,33 @@ const BriefingEditor = () => {
   };
 
   const handleReverseEngineerApply = (incoming: Record<string, string>) => {
-    // Sobrescreve tudo: substitui data pelo retorno da IA
     setData({ ...incoming });
     setCurrentIndex(0);
     setVisited(new Set());
+  };
+
+  const handleSuggestICP = async () => {
+    if (!data.nomeProduto && !data.nicho && !data.transformacaoPrincipal) {
+      toast.error("Preencha pelo menos nome, nicho ou transformação antes de pedir o ICP.");
+      return;
+    }
+    setSuggesting(true);
+    const { data: res, error } = await supabase.functions.invoke("suggest-icp", {
+      body: { briefing: data },
+    });
+    setSuggesting(false);
+    if (error || res?.error) {
+      toast.error(res?.error ?? (error as { message?: string })?.message ?? "Falha ao sugerir ICP.");
+      return;
+    }
+    if (!res?.data || Object.keys(res.data).length === 0) {
+      toast.error("A IA não retornou dados de ICP.");
+      return;
+    }
+    setData((prev) => ({ ...prev, ...(res.data as Record<string, string>) }));
+    toast.success("Cliente Ideal sugerido — campos do Avatar e Mapa da Empatia preenchidos.");
+    const idx = sections.findIndex((s) => s.id === "avatar");
+    if (idx >= 0) setCurrentIndex(idx);
   };
 
   if (loading) {
@@ -146,9 +181,24 @@ const BriefingEditor = () => {
           <Button variant="ghost" size="sm" onClick={handleReset}>
             <RefreshCw className="mr-2 h-4 w-4" /> Reiniciar
           </Button>
-          <Button variant="outline" size="sm" onClick={handleExport}>
-            <Download className="mr-2 h-4 w-4" /> Exportar
-          </Button>
+          <DropdownMenu>
+            <DropdownMenuTrigger asChild>
+              <Button variant="outline" size="sm" disabled={exporting}>
+                <Download className="mr-2 h-4 w-4" /> Exportar
+              </Button>
+            </DropdownMenuTrigger>
+            <DropdownMenuContent align="end">
+              <DropdownMenuItem onClick={() => handleExport("pdf")}>
+                <FileType className="mr-2 h-4 w-4" /> PDF (.pdf)
+              </DropdownMenuItem>
+              <DropdownMenuItem onClick={() => handleExport("doc")}>
+                <FileText className="mr-2 h-4 w-4" /> Word (.doc)
+              </DropdownMenuItem>
+              <DropdownMenuItem onClick={() => handleExport("md")}>
+                <FileText className="mr-2 h-4 w-4" /> Markdown (.md)
+              </DropdownMenuItem>
+            </DropdownMenuContent>
+          </DropdownMenu>
         </div>
       </AppHeader>
 

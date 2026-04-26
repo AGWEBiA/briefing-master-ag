@@ -9,9 +9,13 @@ interface Props {
   field: Field;
   value: string;
   onChange: (v: string) => void;
+  /** Dados completos do briefing — usado por campos com `optionsFn` dinâmico. */
+  allData?: Record<string, string>;
 }
 
-export const FieldRenderer = ({ field, value, onChange }: Props) => {
+export const FieldRenderer = ({ field, value, onChange, allData }: Props) => {
+  const dynamicOptions = field.optionsFn ? field.optionsFn(allData ?? {}) : field.options;
+  const fieldWithOptions = { ...field, options: dynamicOptions };
   const labelEl = (
     <Label htmlFor={field.id} className="text-sm font-medium">
       {field.label}
@@ -37,13 +41,13 @@ export const FieldRenderer = ({ field, value, onChange }: Props) => {
         <Select value={value || undefined} onValueChange={onChange}>
           <SelectTrigger id={field.id}><SelectValue placeholder="Selecione..." /></SelectTrigger>
           <SelectContent>
-            {field.options?.map((o) => <SelectItem key={o} value={o}>{o}</SelectItem>)}
+            {fieldWithOptions.options?.map((o) => <SelectItem key={o} value={o}>{o}</SelectItem>)}
           </SelectContent>
         </Select>
       )}
       {field.type === "radio" && (
         <RadioGroup value={value} onValueChange={onChange} className="flex flex-wrap gap-4 pt-1">
-          {field.options?.map((o) => (
+          {fieldWithOptions.options?.map((o) => (
             <div key={o} className="flex items-center space-x-2">
               <RadioGroupItem value={o} id={`${field.id}-${o}`} />
               <Label htmlFor={`${field.id}-${o}`} className="font-normal cursor-pointer">{o}</Label>
