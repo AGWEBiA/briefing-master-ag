@@ -176,11 +176,62 @@ export const ReverseEngineerDialog = ({ onApply, trigger }: Props) => {
               <Link to="/integrations" className="text-primary underline">Gerenciar integrações</Link>
             </AlertDescription>
           </Alert>
+
+          {choice && (
+            <Alert variant="destructive" className="border-warning/40 bg-warning/10 text-foreground">
+              <AlertTriangle className="h-4 w-4" />
+              <AlertDescription className="space-y-3">
+                <div>
+                  <p className="font-medium">
+                    {choice.errorCode === "SITE_BLOCKED"
+                      ? `Site bloqueou a leitura${choice.scrapeStatus ? ` (HTTP ${choice.scrapeStatus})` : ""}`
+                      : "Conteúdo extraído insuficiente"}
+                  </p>
+                  <p className="text-xs text-muted-foreground mt-1">{choice.message}</p>
+                </div>
+                {choice.preview && (
+                  <details className="text-xs">
+                    <summary className="cursor-pointer text-muted-foreground hover:text-foreground">
+                      Ver prévia do conteúdo extraído
+                    </summary>
+                    <pre className="mt-2 max-h-32 overflow-auto rounded bg-muted/50 p-2 text-[11px] whitespace-pre-wrap">
+                      {choice.preview || "(vazio)"}
+                    </pre>
+                  </details>
+                )}
+                <div className="flex flex-wrap gap-2">
+                  {choice.hasPerplexity ? (
+                    <Button
+                      type="button"
+                      size="sm"
+                      onClick={() => run("perplexity")}
+                      disabled={running}
+                    >
+                      <RefreshCw className="mr-2 h-3.5 w-3.5" />
+                      Tentar com Perplexity
+                    </Button>
+                  ) : (
+                    <Button type="button" size="sm" variant="outline" asChild>
+                      <Link to="/integrations">Conectar Perplexity</Link>
+                    </Button>
+                  )}
+                  <Button
+                    type="button"
+                    size="sm"
+                    variant="outline"
+                    onClick={() => { setChoice(null); setUrl(""); }}
+                  >
+                    Usar outro link
+                  </Button>
+                </div>
+              </AlertDescription>
+            </Alert>
+          )}
         </div>
 
         <DialogFooter>
           <Button variant="ghost" onClick={() => setOpen(false)} disabled={running}>Cancelar</Button>
-          <Button onClick={run} disabled={running || !url}>
+          <Button onClick={() => run()} disabled={running || !url}>
             {running ? <Loader2 className="mr-2 h-4 w-4 animate-spin" /> : <Wand2 className="mr-2 h-4 w-4" />}
             {running ? "Analisando..." : "Preencher briefing"}
           </Button>
