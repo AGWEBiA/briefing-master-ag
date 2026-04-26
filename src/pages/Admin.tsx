@@ -304,6 +304,17 @@ const Admin = () => {
         onSaved={async () => { setEditing(null); await loadUsers(); }}
       />
 
+      <CreateUserDialog
+        open={creating}
+        onClose={() => setCreating(false)}
+        onCreated={async () => { setCreating(false); await loadUsers(); }}
+      />
+
+      <ImportResultDialog
+        result={importResult}
+        onClose={() => setImportResult(null)}
+      />
+
       <AlertDialog open={!!deleting} onOpenChange={(o) => !o && setDeleting(null)}>
         <AlertDialogContent>
           <AlertDialogHeader>
