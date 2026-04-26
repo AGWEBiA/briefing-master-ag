@@ -1,6 +1,6 @@
 import { useEffect, useRef, useState } from "react";
 import * as XLSX from "xlsx";
-import { Loader2, Shield, Users, FileText, Pencil, Trash2, KeyRound, Mail, UserCog, UserPlus, Upload, Download, Search, X } from "lucide-react";
+import { Loader2, Shield, Users, FileText, Pencil, Trash2, KeyRound, Mail, UserCog, UserPlus, Upload, Download, Search, X, ArrowUp, ArrowDown, ArrowUpDown } from "lucide-react";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
@@ -59,6 +59,8 @@ const Admin = () => {
   const fileRef = useRef<HTMLInputElement>(null);
   const [userSearch, setUserSearch] = useState("");
   const [userRoleFilter, setUserRoleFilter] = useState<"all" | "admin" | "user">("all");
+  const [userSort, setUserSort] = useState<{ key: "name" | "last_sign_in"; dir: "asc" | "desc" }>({ key: "last_sign_in", dir: "desc" });
+  const [briefingSort, setBriefingSort] = useState<{ key: "title" | "updated"; dir: "asc" | "desc" }>({ key: "updated", dir: "desc" });
 
   const loadUsers = async () => {
     const { data, error } = await supabase.functions.invoke("admin-users", {
@@ -161,16 +163,47 @@ const Admin = () => {
     ?? users.find((p) => p.id === uid)?.email
     ?? uid.slice(0, 8);
 
-  const filteredUsers = users.filter((u) => {
-    if (userRoleFilter === "admin" && !u.is_admin) return false;
-    if (userRoleFilter === "user" && u.is_admin) return false;
-    const q = userSearch.trim().toLowerCase();
-    if (!q) return true;
-    return (
-      (u.email ?? "").toLowerCase().includes(q) ||
-      (u.display_name ?? "").toLowerCase().includes(q)
-    );
+  const filteredUsers = users
+    .filter((u) => {
+      if (userRoleFilter === "admin" && !u.is_admin) return false;
+      if (userRoleFilter === "user" && u.is_admin) return false;
+      const q = userSearch.trim().toLowerCase();
+      if (!q) return true;
+      return (
+        (u.email ?? "").toLowerCase().includes(q) ||
+        (u.display_name ?? "").toLowerCase().includes(q)
+      );
+    })
+    .slice()
+    .sort((a, b) => {
+      const mult = userSort.dir === "asc" ? 1 : -1;
+      if (userSort.key === "name") {
+        const an = (a.display_name ?? a.email ?? "").toLowerCase();
+        const bn = (b.display_name ?? b.email ?? "").toLowerCase();
+        return an.localeCompare(bn, "pt-BR") * mult;
+      }
+      const at = a.last_sign_in_at ? new Date(a.last_sign_in_at).getTime() : 0;
+      const bt = b.last_sign_in_at ? new Date(b.last_sign_in_at).getTime() : 0;
+      return (at - bt) * mult;
+    });
+
+  const sortedBriefings = briefings.slice().sort((a, b) => {
+    const mult = briefingSort.dir === "asc" ? 1 : -1;
+    if (briefingSort.key === "title") {
+      return (a.title ?? "").toLowerCase().localeCompare((b.title ?? "").toLowerCase(), "pt-BR") * mult;
+    }
+    return (new Date(a.updated_at).getTime() - new Date(b.updated_at).getTime()) * mult;
   });
+
+  const toggleUserSort = (key: "name" | "last_sign_in") =>
+    setUserSort((s) => s.key === key ? { key, dir: s.dir === "asc" ? "desc" : "asc" } : { key, dir: "asc" });
+  const toggleBriefingSort = (key: "title" | "updated") =>
+    setBriefingSort((s) => s.key === key ? { key, dir: s.dir === "asc" ? "desc" : "asc" } : { key, dir: "asc" });
+
+  const SortIcon = ({ active, dir }: { active: boolean; dir: "asc" | "desc" }) =>
+    !active ? <ArrowUpDown className="h-3.5 w-3.5 opacity-40" />
+      : dir === "asc" ? <ArrowUp className="h-3.5 w-3.5" />
+      : <ArrowDown className="h-3.5 w-3.5" />;
 
   return (
     <div className="min-h-screen bg-background">
@@ -264,10 +297,28 @@ const Admin = () => {
             <Table>
               <TableHeader>
                 <TableRow>
-                  <TableHead>Nome</TableHead>
+                  <TableHead>
+                    <button
+                      type="button"
+                      onClick={() => toggleUserSort("name")}
+                      className="flex items-center gap-1.5 font-medium hover:text-foreground"
+                    >
+                      Nome
+                      <SortIcon active={userSort.key === "name"} dir={userSort.dir} />
+                    </button>
+                  </TableHead>
                   <TableHead>Email</TableHead>
                   <TableHead>Role</TableHead>
-                  <TableHead>Último acesso</TableHead>
+                  <TableHead>
+                    <button
+                      type="button"
+                      onClick={() => toggleUserSort("last_sign_in")}
+                      className="flex items-center gap-1.5 font-medium hover:text-foreground"
+                    >
+                      Último acesso
+                      <SortIcon active={userSort.key === "last_sign_in"} dir={userSort.dir} />
+                    </button>
+                  </TableHead>
                   <TableHead className="text-right">Ações</TableHead>
                 </TableRow>
               </TableHeader>
@@ -361,13 +412,32 @@ const Admin = () => {
             <Table>
               <TableHeader>
                 <TableRow>
-                  <TableHead>Título</TableHead><TableHead>Usuário</TableHead>
+                  <TableHead>
+                    <button
+                      type="button"
+                      onClick={() => toggleBriefingSort("title")}
+                      className="flex items-center gap-1.5 font-medium hover:text-foreground"
+                    >
+                      Título
+                      <SortIcon active={briefingSort.key === "title"} dir={briefingSort.dir} />
+                    </button>
+                  </TableHead>
+                  <TableHead>Usuário</TableHead>
                   <TableHead>Estratégia</TableHead><TableHead>Status</TableHead>
-                  <TableHead>Atualizado</TableHead>
+                  <TableHead>
+                    <button
+                      type="button"
+                      onClick={() => toggleBriefingSort("updated")}
+                      className="flex items-center gap-1.5 font-medium hover:text-foreground"
+                    >
+                      Atualizado
+                      <SortIcon active={briefingSort.key === "updated"} dir={briefingSort.dir} />
+                    </button>
+                  </TableHead>
                 </TableRow>
               </TableHeader>
               <TableBody>
-                {briefings.map((b) => {
+                {sortedBriefings.map((b) => {
                   const s = getStrategy(b.strategy);
                   return (
                     <TableRow key={b.id}>
