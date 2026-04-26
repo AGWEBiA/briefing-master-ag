@@ -543,39 +543,37 @@ export function exportBriefingPdf(
 
   // ── SUMÁRIO
   const drawToc = () => {
-    writeWrapped("📑 Sumário", 18, { bold: true, color: PALETTE.ink, lineGap: 8 });
+    writeWrapped("Sumário", 22, { bold: true, color: PALETTE.ink, lineGap: 4 });
     setDraw(PALETTE.brand);
-    doc.setLineWidth(1.2);
+    doc.setLineWidth(1.5);
     doc.line(margin, y, margin + 60, y);
-    y += 18;
+    y += 22;
 
     const blockLetters = ["A", "B", "C", "D", "E", "F"];
-    FIXED_SECTIONS.forEach((s, i) => {
-      ensureSpace(20);
-      // tag
-      const tag = `BLOCO ${blockLetters[i] ?? i + 1}`;
+    const drawTocLine = (tag: string, tagColor: [number, number, number], title: string) => {
+      ensureSpace(22);
+      // tag pill
       doc.setFont("helvetica", "bold");
-      doc.setFontSize(8.5);
-      setText(PALETTE.brand);
-      doc.text(tag, margin, y);
+      doc.setFontSize(8);
+      const tw = doc.getTextWidth(tag);
+      const padX = 6, tagW = tw + padX * 2, tagH = 14;
+      setFill(tagColor);
+      doc.roundedRect(margin, y - 10, tagW, tagH, 2, 2, "F");
+      setText([255, 255, 255]);
+      doc.text(tag, margin + padX, y);
       // título
       doc.setFont("helvetica", "normal");
       doc.setFontSize(11);
       setText(PALETTE.ink);
-      doc.text(s.title, margin + 70, y);
-      y += 18;
+      doc.text(stripEmojis(title), margin + tagW + 10, y);
+      y += 20;
+    };
+
+    FIXED_SECTIONS.forEach((s, i) => {
+      drawTocLine(`BLOCO ${blockLetters[i] ?? i + 1}`, PALETTE.brand, s.title);
     });
     if (strat) {
-      ensureSpace(20);
-      doc.setFont("helvetica", "bold");
-      doc.setFontSize(8.5);
-      setText(PALETTE.ok);
-      doc.text("ESTRATÉGIA", margin, y);
-      doc.setFont("helvetica", "normal");
-      doc.setFontSize(11);
-      setText(PALETTE.ink);
-      doc.text(`${strat.emoji} ${strat.name}`, margin + 70, y);
-      y += 18;
+      drawTocLine("ESTRATÉGIA", PALETTE.ok, strat.name);
     }
     doc.addPage();
     y = margin;
