@@ -1,6 +1,5 @@
 import { useEffect, useState } from "react";
-import { AlertTriangle, CheckCircle2, Link as LinkIcon, Loader2, RefreshCw, Sparkles, Star, Wand2 } from "lucide-react";
-import { Progress } from "@/components/ui/progress";
+import { AlertTriangle, Link as LinkIcon, Loader2, RefreshCw, Sparkles, Star, Wand2 } from "lucide-react";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import {
