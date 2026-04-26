@@ -24,6 +24,20 @@ const v = (data: Record<string, string>, id: string) => {
   return val.length ? val : NA;
 };
 
+// Remove emojis e símbolos fora do BMP que o Helvetica do jsPDF não suporta
+// (renderiza como "Ø=ÜÑ", "&j", etc). Mantemos texto puro para o PDF.
+const stripEmojis = (s: string): string => {
+  if (!s) return s;
+  return s
+    // Remove sequências de emoji (Extended_Pictographic + variation selectors + ZWJ)
+    .replace(/[\u{1F000}-\u{1FFFF}]/gu, "")
+    .replace(/[\u{2600}-\u{27BF}]/gu, "")
+    .replace(/[\u{FE00}-\u{FE0F}]/gu, "") // variation selectors
+    .replace(/[\u{200D}]/gu, "")           // ZWJ
+    .replace(/\s{2,}/g, " ")
+    .trim();
+};
+
 const slugify = (s: string) =>
   s.toLowerCase().normalize("NFD").replace(/\p{Diacritic}/gu, "")
     .replace(/[^a-z0-9]+/g, "-").replace(/(^-|-$)/g, "");
