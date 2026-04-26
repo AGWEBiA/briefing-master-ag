@@ -881,7 +881,7 @@ Deno.serve(async (req) => {
       if (
         byProvider.firecrawl?.api_key &&
         !alreadyTried.has("firecrawl") &&
-        pageType !== "amp"
+        (pageType as PageType) !== "amp"
       ) {
         await tryFirecrawl();
         alreadyTried.add("firecrawl");
