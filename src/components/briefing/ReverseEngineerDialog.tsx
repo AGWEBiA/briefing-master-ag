@@ -143,9 +143,10 @@ export const ReverseEngineerDialog = ({ onApply, trigger }: Props) => {
 
           <Alert>
             <AlertDescription className="text-xs">
-              <span className="font-medium">Pesquisa enriquecida:</span>{" "}
-              {available.firecrawl ? "🔥 Firecrawl ativo" : "⚪ Firecrawl não conectado (usaremos fetch direto)"} ·{" "}
-              {available.perplexity ? "🔎 Perplexity ativo" : "⚪ Perplexity não conectado"}.{" "}
+              <span className="font-medium">Extração de conteúdo:</span> usamos leitura direta da página por padrão.{" "}
+              {available.firecrawl && "🔥 Firecrawl ativo (extração avançada de SPAs/sites protegidos). "}
+              {available.perplexity && "🔎 Perplexity ativo (pesquisa de público-alvo + fallback se o site bloquear). "}
+              {!available.firecrawl && !available.perplexity && "Conecte Firecrawl ou Perplexity para resultados melhores em sites que bloqueiam scraping."}{" "}
               <Link to="/integrations" className="text-primary underline">Gerenciar integrações</Link>
             </AlertDescription>
           </Alert>
