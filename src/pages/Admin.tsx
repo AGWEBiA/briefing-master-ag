@@ -225,7 +225,42 @@ const Admin = () => {
               <Button variant="ghost" size="sm" onClick={loadUsers}>Recarregar</Button>
             </div>
           </CardHeader>
-          <CardContent>
+          <CardContent className="space-y-4">
+            <div className="flex flex-col gap-2 sm:flex-row sm:items-center">
+              <div className="relative flex-1">
+                <Search className="absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-muted-foreground" />
+                <Input
+                  value={userSearch}
+                  onChange={(e) => setUserSearch(e.target.value)}
+                  placeholder="Buscar por nome ou email…"
+                  className="pl-9 pr-9"
+                />
+                {userSearch && (
+                  <button
+                    type="button"
+                    onClick={() => setUserSearch("")}
+                    className="absolute right-2 top-1/2 -translate-y-1/2 rounded p-1 text-muted-foreground hover:text-foreground"
+                    aria-label="Limpar busca"
+                  >
+                    <X className="h-3.5 w-3.5" />
+                  </button>
+                )}
+              </div>
+              <Select value={userRoleFilter} onValueChange={(v) => setUserRoleFilter(v as typeof userRoleFilter)}>
+                <SelectTrigger className="w-full sm:w-[180px]">
+                  <SelectValue placeholder="Filtrar por role" />
+                </SelectTrigger>
+                <SelectContent>
+                  <SelectItem value="all">Todos</SelectItem>
+                  <SelectItem value="admin">Apenas Admins</SelectItem>
+                  <SelectItem value="user">Apenas Usuários</SelectItem>
+                </SelectContent>
+              </Select>
+              <div className="text-xs text-muted-foreground sm:ml-2">
+                {filteredUsers.length} de {users.length}
+              </div>
+            </div>
+
             <Table>
               <TableHeader>
                 <TableRow>
@@ -237,7 +272,13 @@ const Admin = () => {
                 </TableRow>
               </TableHeader>
               <TableBody>
-                {users.map((u) => (
+                {filteredUsers.length === 0 ? (
+                  <TableRow>
+                    <TableCell colSpan={5} className="py-8 text-center text-sm text-muted-foreground">
+                      Nenhum usuário encontrado com os filtros atuais.
+                    </TableCell>
+                  </TableRow>
+                ) : filteredUsers.map((u) => (
                   <TableRow key={u.id}>
                     <TableCell className="font-medium">
                       {u.display_name ?? "—"}
