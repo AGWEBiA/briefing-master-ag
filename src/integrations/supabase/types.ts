@@ -104,6 +104,48 @@ export type Database = {
         }
         Relationships: []
       }
+      scrape_feedback: {
+        Row: {
+          chars: number
+          created_at: string
+          host: string
+          id: string
+          method: string
+          page_type: string | null
+          rating: string
+          score: number
+          url: string
+          user_id: string
+          words: number
+        }
+        Insert: {
+          chars?: number
+          created_at?: string
+          host: string
+          id?: string
+          method: string
+          page_type?: string | null
+          rating: string
+          score: number
+          url: string
+          user_id: string
+          words?: number
+        }
+        Update: {
+          chars?: number
+          created_at?: string
+          host?: string
+          id?: string
+          method?: string
+          page_type?: string | null
+          rating?: string
+          score?: number
+          url?: string
+          user_id?: string
+          words?: number
+        }
+        Relationships: []
+      }
       user_roles: {
         Row: {
           created_at: string

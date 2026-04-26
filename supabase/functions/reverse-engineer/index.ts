@@ -105,11 +105,71 @@ async function scrapeWithFirecrawl(url: string, apiKey: string): Promise<string>
   return (data?.data?.markdown ?? data?.markdown ?? "").slice(0, 20000);
 }
 
+type PageType = "spa" | "amp" | "ssr" | "static" | "blocked" | "unknown";
+
 interface ScrapeOutcome {
   content: string;
   status: number;
   blocked: boolean;
   reason?: string;
+  pageType: PageType;
+  pageSignals: string[]; // razões que justificam a classificação
+}
+
+// Heurística: classifica a página com base no HTML cru e no texto extraído.
+function detectPageType(html: string, textChars: number, blocked: boolean): { type: PageType; signals: string[] } {
+  if (blocked) return { type: "blocked", signals: ["bloqueio HTTP"] };
+  const signals: string[] = [];
+  const lower = html.toLowerCase();
+
+  // AMP: <html ⚡> ou <html amp>
+  if (/<html[^>]*\s(amp|⚡)(\s|=|>)/i.test(html)) {
+    signals.push("tag <html amp>");
+    return { type: "amp", signals };
+  }
+
+  // SPA fingerprints
+  const spaIndicators = [
+    { re: /<div[^>]+id=["'](root|app|__next|__nuxt|svelte)["']/i, msg: "div root de SPA" },
+    { re: /<script[^>]+type=["']module["']/i, msg: "script type=module" },
+    { re: /\/_next\//, msg: "_next bundle" },
+    { re: /\/static\/js\/main\.[a-f0-9]+\.js/i, msg: "bundle CRA hash" },
+    { re: /window\.__NUXT__/, msg: "__NUXT__" },
+    { re: /window\.__INITIAL_STATE__/, msg: "__INITIAL_STATE__" },
+    { re: /data-reactroot/i, msg: "data-reactroot" },
+    { re: /ng-version=/i, msg: "Angular ng-version" },
+  ];
+  for (const ind of spaIndicators) if (ind.re.test(lower) || ind.re.test(html)) signals.push(ind.msg);
+
+  // Razão texto/HTML: SPAs geralmente têm muito HTML e pouco texto extraído
+  const htmlSize = html.length || 1;
+  const textRatio = textChars / htmlSize;
+
+  // <noscript> grande indica que o site avisa "ative JS" → quase certo SPA
+  const noscriptMatch = html.match(/<noscript[^>]*>([\s\S]{0,400})<\/noscript>/i);
+  if (noscriptMatch && /enable\s+javascript|habilit[ae]\s+javascript|ative\s+o?\s*javascript/i.test(noscriptMatch[1])) {
+    signals.push("aviso 'ative JavaScript'");
+  }
+
+  if (signals.length >= 1 && (textRatio < 0.04 || textChars < 600)) {
+    signals.push(`pouco texto vs HTML (${(textRatio * 100).toFixed(1)}%)`);
+    return { type: "spa", signals };
+  }
+
+  // SSR fraco: tem indicador de framework SSR mas com bom texto
+  if (signals.length >= 1 && textChars >= 600) {
+    signals.push(`SSR aparente (texto ok: ${textChars}c, ${(textRatio * 100).toFixed(1)}%)`);
+    return { type: "ssr", signals };
+  }
+
+  // Static: HTML simples sem fingerprints
+  if (textChars >= 400) {
+    signals.push("HTML estático tradicional");
+    return { type: "static", signals };
+  }
+
+  signals.push("não foi possível classificar com confiança");
+  return { type: "unknown", signals };
 }
 
 async function scrapeBasic(url: string): Promise<ScrapeOutcome> {
@@ -126,7 +186,11 @@ async function scrapeBasic(url: string): Promise<ScrapeOutcome> {
       },
     });
   } catch (e) {
-    return { content: "", status: 0, blocked: true, reason: `Falha de rede: ${(e as Error).message}` };
+    return {
+      content: "", status: 0, blocked: true,
+      reason: `Falha de rede: ${(e as Error).message}`,
+      pageType: "blocked", pageSignals: ["erro de rede"],
+    };
   }
 
   if (!r.ok) {
@@ -138,6 +202,8 @@ async function scrapeBasic(url: string): Promise<ScrapeOutcome> {
       reason: blocked
         ? `O site bloqueou o acesso automatizado (HTTP ${r.status}).`
         : `HTTP ${r.status} ao buscar a URL.`,
+      pageType: "blocked",
+      pageSignals: [`HTTP ${r.status}`],
     };
   }
 
@@ -181,17 +247,25 @@ async function scrapeBasic(url: string): Promise<ScrapeOutcome> {
     (headings ? `## Estrutura da página\n${headings}\n\n` : "") +
     `## Conteúdo\n${body}`;
 
-  return { content: composed.slice(0, 20000), status: r.status, blocked: false };
+  const detection = detectPageType(html, body.length, false);
+
+  return {
+    content: composed.slice(0, 20000),
+    status: r.status,
+    blocked: false,
+    pageType: detection.type,
+    pageSignals: detection.signals,
+  };
 }
 
 // ===== Qualidade do conteúdo raspado =====
 // Devolve um score 0-100 + nível + recomendação de método alternativo.
-const QUALITY_MIN_OK = 60;     // abaixo disso, bloqueia o método e sugere alternativa
-const QUALITY_MIN_USABLE = 40; // abaixo disso, considera inutilizável
+const QUALITY_MIN_OK_BASE = 60;     // abaixo disso, sugere alternativa
+const QUALITY_MIN_USABLE_BASE = 40; // abaixo disso, considera inutilizável
 
 interface QualityReport {
-  ok: boolean;             // score >= QUALITY_MIN_OK
-  usable: boolean;         // score >= QUALITY_MIN_USABLE
+  ok: boolean;             // score >= limiar ajustado
+  usable: boolean;         // score >= limiar utilizável ajustado
   score: number;           // 0-100
   level: "alta" | "média" | "baixa" | "insuficiente";
   chars: number;
@@ -199,9 +273,11 @@ interface QualityReport {
   reason?: string;
   // Trechos representativos para exibir na UI
   snippets: { head: string; middle: string; tail: string };
+  // Limiares efetivamente aplicados (após ajuste por feedback)
+  thresholds: { ok: number; usable: number; adjustment: number };
 }
 
-function assessContentQuality(content: string): QualityReport {
+function assessContentQuality(content: string, thresholdAdjustment = 0): QualityReport {
   const trimmed = content.trim();
   const chars = trimmed.length;
   const wordMatches = trimmed.match(/[A-Za-zÀ-ÿ]{4,}/g) ?? [];
@@ -214,11 +290,16 @@ function assessContentQuality(content: string): QualityReport {
   if (chars < 100) score = Math.min(score, 10);
   score = Math.max(0, Math.min(100, score));
 
+  // Limiares ajustados pelo feedback histórico do usuário (clamp -20..+20)
+  const adj = Math.max(-20, Math.min(20, thresholdAdjustment));
+  const okThr = Math.max(20, Math.min(90, QUALITY_MIN_OK_BASE + adj));
+  const usableThr = Math.max(10, Math.min(okThr - 10, QUALITY_MIN_USABLE_BASE + adj));
+
   let level: QualityReport["level"];
   let reason: string | undefined;
-  if (score >= 75) level = "alta";
-  else if (score >= QUALITY_MIN_OK) level = "média";
-  else if (score >= QUALITY_MIN_USABLE) {
+  if (score >= okThr + 15) level = "alta";
+  else if (score >= okThr) level = "média";
+  else if (score >= usableThr) {
     level = "baixa";
     reason = `Conteúdo abaixo do recomendado (${chars} caracteres, ${words} palavras).`;
   } else {
@@ -239,34 +320,105 @@ function assessContentQuality(content: string): QualityReport {
   };
 
   return {
-    ok: score >= QUALITY_MIN_OK,
-    usable: score >= QUALITY_MIN_USABLE,
+    ok: score >= okThr,
+    usable: score >= usableThr,
     score,
     level,
     chars,
     words,
     reason,
     snippets,
+    thresholds: { ok: okThr, usable: usableThr, adjustment: adj },
   };
 }
 
-// Sugere o melhor método alternativo dadas as integrações disponíveis.
+// Calcula um ajuste de limiar baseado no feedback recente do usuário (mesmo host quando disponível).
+// Lógica: se o usuário marca "bom" conteúdos abaixo do limiar atual → reduzir o limiar.
+// Se marca "ruim" conteúdos acima do limiar atual → aumentar o limiar.
+async function computeThresholdAdjustment(
+  // deno-lint-ignore no-explicit-any
+  supabase: any,
+  userId: string,
+  host: string,
+): Promise<number> {
+  try {
+    // Últimos 30 feedbacks do usuário, priorizando o mesmo host
+    const { data: hostRows } = await supabase
+      .from("scrape_feedback")
+      .select("score, rating")
+      .eq("user_id", userId)
+      .eq("host", host)
+      .order("created_at", { ascending: false })
+      .limit(20);
+    const { data: globalRows } = await supabase
+      .from("scrape_feedback")
+      .select("score, rating")
+      .eq("user_id", userId)
+      .order("created_at", { ascending: false })
+      .limit(30);
+
+    const rows = [
+      ...((hostRows ?? []) as Array<{ score: number; rating: string }>),
+      ...((globalRows ?? []) as Array<{ score: number; rating: string }>),
+    ];
+    if (rows.length < 3) return 0;
+
+    let pull = 0;
+    let weight = 0;
+    for (const r of rows) {
+      const isGood = r.rating === "good";
+      // Distância do score em relação ao limiar atual base
+      const delta = r.score - QUALITY_MIN_OK_BASE;
+      if (isGood && delta < 0) {
+        // bom abaixo do limiar → puxa limiar pra baixo (maximo -10 por amostra)
+        pull += Math.max(-10, delta / 2);
+        weight += 1;
+      } else if (!isGood && delta > 0) {
+        // ruim acima do limiar → puxa limiar pra cima
+        pull += Math.min(10, delta / 2);
+        weight += 1;
+      }
+    }
+    if (weight === 0) return 0;
+    return Math.round(pull / weight);
+  } catch (e) {
+    console.warn("computeThresholdAdjustment falhou:", (e as Error).message);
+    return 0;
+  }
+}
+
+// Sugere o melhor método alternativo dadas as integrações disponíveis e o tipo de página.
 function recommendNextMethod(opts: {
   triedMethod: string;
   hasFirecrawl: boolean;
   hasPerplexity: boolean;
   blocked: boolean;
+  pageType?: PageType;
 }): "firecrawl" | "perplexity" | "fetch" | null {
-  const { triedMethod, hasFirecrawl, hasPerplexity, blocked } = opts;
-  // Se site bloqueia bots, fetch direto não vai resolver — pular para Firecrawl/Perplexity
-  if (blocked) {
+  const { triedMethod, hasFirecrawl, hasPerplexity, blocked, pageType } = opts;
+
+  // 1) Site bloqueia bots → fetch direto não resolve
+  if (blocked || pageType === "blocked") {
+    if (hasPerplexity) return "perplexity"; // Perplexity é mais robusto a bloqueios
+    if (hasFirecrawl && triedMethod !== "firecrawl") return "firecrawl";
+    return null;
+  }
+
+  // 2) AMP costuma ter bom HTML estático — Firecrawl pode até piorar; pula direto pra Perplexity
+  if (pageType === "amp") {
+    if (hasPerplexity && triedMethod !== "perplexity") return "perplexity";
+    return null;
+  }
+
+  // 3) SPA → Firecrawl é a melhor escolha (renderiza JS)
+  if (pageType === "spa") {
     if (hasFirecrawl && triedMethod !== "firecrawl") return "firecrawl";
     if (hasPerplexity) return "perplexity";
     return null;
   }
-  // Se conteúdo curto vindo de fetch, Firecrawl renderiza JS → melhor alternativa
+
+  // 4) SSR fraco / static / unknown — segue ordem padrão
   if (triedMethod === "fetch" && hasFirecrawl) return "firecrawl";
-  // Se Firecrawl já tentou e falhou, ou não há Firecrawl, vai para Perplexity
   if (hasPerplexity) return "perplexity";
   if (hasFirecrawl && triedMethod !== "firecrawl") return "firecrawl";
   return null;
@@ -448,18 +600,78 @@ Deno.serve(async (req) => {
       engine = "lovable",
       mode = "auto",
       forceMethod,
+      triedMethods = [],
+      // Feedback submission
+      rating,
+      ratingScore,
+      ratingMethod,
+      ratingChars,
+      ratingWords,
+      ratingPageType,
     } = body as {
       url?: string;
       engine?: "lovable" | "openai" | "gemini";
-      // "auto" = comportamento atual; "inspect" = só raspar e devolver prévia/qualidade; "run" = forçar execução com forceMethod
-      mode?: "auto" | "inspect" | "run";
+      // "auto" = comportamento padrão; "inspect" = só raspar e devolver prévia/qualidade;
+      // "run" = forçar execução com forceMethod; "feedback" = grava avaliação do usuário
+      mode?: "auto" | "inspect" | "run" | "feedback";
       forceMethod?: "fetch" | "firecrawl" | "perplexity";
+      // Métodos já tentados pelo usuário no mesmo URL — evita repetir na cascata automática
+      triedMethods?: Array<"fetch" | "firecrawl" | "perplexity" | "perplexity-fallback">;
+      rating?: "good" | "bad";
+      ratingScore?: number;
+      ratingMethod?: string;
+      ratingChars?: number;
+      ratingWords?: number;
+      ratingPageType?: string;
     };
 
     if (!url || !/^https?:\/\//i.test(url)) {
       return new Response(
         JSON.stringify({ error: "URL inválida. Use http:// ou https://", errorCode: "INVALID_URL" }),
         { status: 400, headers: { ...corsHeaders, "Content-Type": "application/json" } },
+      );
+    }
+
+    // Util: extrai host
+    let host = "";
+    try { host = new URL(url).hostname.replace(/^www\./, ""); } catch { host = ""; }
+
+    // === Modo "feedback": registra avaliação e devolve novo limiar ===
+    if (mode === "feedback") {
+      if (rating !== "good" && rating !== "bad") {
+        return new Response(
+          JSON.stringify({ error: "rating deve ser 'good' ou 'bad'." }),
+          { status: 400, headers: { ...corsHeaders, "Content-Type": "application/json" } },
+        );
+      }
+      const score = Math.max(0, Math.min(100, Number(ratingScore ?? 0) | 0));
+      const { error: insErr } = await supabase.from("scrape_feedback").insert({
+        user_id: userId,
+        host,
+        url,
+        method: ratingMethod ?? "unknown",
+        score,
+        chars: Math.max(0, Number(ratingChars ?? 0) | 0),
+        words: Math.max(0, Number(ratingWords ?? 0) | 0),
+        page_type: ratingPageType ?? null,
+        rating,
+      });
+      if (insErr) {
+        console.error("feedback insert error:", insErr);
+        return new Response(
+          JSON.stringify({ error: "Falha ao salvar feedback." }),
+          { status: 500, headers: { ...corsHeaders, "Content-Type": "application/json" } },
+        );
+      }
+      const newAdj = await computeThresholdAdjustment(supabase, userId, host);
+      return new Response(
+        JSON.stringify({
+          ok: true,
+          host,
+          thresholdAdjustment: newAdj,
+          newOkThreshold: Math.max(20, Math.min(90, QUALITY_MIN_OK_BASE + newAdj)),
+        }),
+        { status: 200, headers: { ...corsHeaders, "Content-Type": "application/json" } },
       );
     }
 
@@ -474,6 +686,9 @@ Deno.serve(async (req) => {
       (integrations ?? []).map((i) => [i.provider, i]),
     ) as Record<string, { api_key: string; default_model: string | null }>;
 
+    // Ajuste de limiar baseado no histórico de feedback
+    const thresholdAdj = await computeThresholdAdjustment(supabase, userId, host);
+
     // 1) Scrape — segue forceMethod quando informado
     let pageContent = "";
     type ScrapeMethod = "firecrawl" | "fetch" | "perplexity-fallback";
@@ -481,12 +696,24 @@ Deno.serve(async (req) => {
     let scrapeStatus = 0;
     let scrapeBlocked = false;
     let scrapeReason: string | undefined;
+    let pageType: PageType = "unknown";
+    let pageSignals: string[] = [];
 
     const tryFirecrawl = async () => {
       if (!byProvider.firecrawl?.api_key) return false;
       try {
         const c = await scrapeWithFirecrawl(url, byProvider.firecrawl.api_key);
-        if (c) { pageContent = c; scrapeMethod = "firecrawl"; return true; }
+        if (c) {
+          pageContent = c;
+          scrapeMethod = "firecrawl";
+          // Firecrawl rendeniza JS — tipicamente devolve markdown estruturado.
+          // Se ainda assim vier curto, mantém pageType detectado anteriormente (se houver).
+          if (pageType === "unknown") {
+            pageType = c.length > 1500 ? "ssr" : "spa";
+            pageSignals = [`Firecrawl entregou ${c.length} chars`];
+          }
+          return true;
+        }
       } catch (e) {
         console.warn("Firecrawl falhou:", (e as Error).message);
         scrapeReason = `Firecrawl: ${(e as Error).message}`;
@@ -498,6 +725,8 @@ Deno.serve(async (req) => {
       const out = await scrapeBasic(url);
       scrapeStatus = out.status;
       scrapeBlocked = out.blocked;
+      pageType = out.pageType;
+      pageSignals = out.pageSignals;
       if (out.content) { pageContent = out.content; scrapeMethod = "fetch"; return true; }
       scrapeReason = out.reason;
       return false;
@@ -531,13 +760,17 @@ Deno.serve(async (req) => {
     } else if (forceMethod === "fetch") {
       await tryFetch();
     } else {
-      // Ordem padrão: firecrawl (se conectado) → fetch → perplexity (fallback)
-      const ok = await tryFirecrawl();
-      if (!ok) await tryFetch();
+      // Ordem padrão: fetch primeiro para detectar pageType e decidir se vale Firecrawl
+      await tryFetch();
+      // Se conteúdo curto/bloqueado e Firecrawl disponível → tenta Firecrawl
+      const initialQ = assessContentQuality(pageContent, thresholdAdj);
+      if (!initialQ.ok && byProvider.firecrawl?.api_key) {
+        await tryFirecrawl();
+      }
     }
 
-    // Avaliação de qualidade do conteúdo já raspado
-    let quality = assessContentQuality(pageContent);
+    // Avaliação de qualidade do conteúdo já raspado, com limiar ajustado por feedback
+    let quality = assessContentQuality(pageContent, thresholdAdj);
 
     // Helper para montar o payload de "needsChoice" com prévia rica + recomendação
     const buildChoicePayload = (extra?: Partial<Record<string, unknown>>) => {
@@ -548,27 +781,41 @@ Deno.serve(async (req) => {
         hasFirecrawl,
         hasPerplexity,
         blocked: scrapeBlocked,
+        pageType,
       });
 
       // Bloqueio automático: método que claramente não vai funcionar fica desabilitado
       const methods = {
         fetch: {
           available: true,
-          disabled: scrapeBlocked && scrapeMethod === "fetch",
+          disabled: (scrapeBlocked && scrapeMethod === "fetch") || pageType === "spa",
           reason: scrapeBlocked && scrapeMethod === "fetch"
             ? `Bloqueado pelo site (HTTP ${scrapeStatus || "?"})`
+            : pageType === "spa"
+            ? "Página é SPA — fetch direto não vai resolver"
             : undefined,
         },
         firecrawl: {
           available: hasFirecrawl,
-          disabled: false,
-          reason: hasFirecrawl ? undefined : "Conecte Firecrawl em Integrações",
+          disabled: pageType === "amp", // AMP já tem bom HTML; Firecrawl pouco agrega
+          reason: !hasFirecrawl
+            ? "Conecte Firecrawl em Integrações"
+            : pageType === "amp" ? "AMP já entrega HTML estático" : undefined,
         },
         perplexity: {
           available: hasPerplexity,
           disabled: false,
           reason: hasPerplexity ? undefined : "Conecte Perplexity em Integrações",
         },
+      };
+
+      const pageTypeLabel: Record<PageType, string> = {
+        spa: "SPA (renderizado por JavaScript)",
+        amp: "AMP (HTML acelerado)",
+        ssr: "SSR (renderizado no servidor)",
+        static: "HTML estático tradicional",
+        blocked: "Bloqueado pelo servidor",
+        unknown: "Tipo não identificado",
       };
 
       return {
@@ -582,7 +829,7 @@ Deno.serve(async (req) => {
                 ? "Recomendamos extrair com Firecrawl (renderiza JS)."
                 : "Conecte Firecrawl ou Perplexity para contornar."
             }`
-          : `Conteúdo extraído tem qualidade ${quality.level} (${quality.score}/100, ${quality.chars} caracteres, ${quality.words} palavras). ${
+          : `Conteúdo extraído tem qualidade ${quality.level} (${quality.score}/100, limiar ${quality.thresholds.ok}, ${quality.chars} caracteres, ${quality.words} palavras). Página classificada como ${pageTypeLabel[pageType]}. ${
               recommended === "firecrawl"
                 ? "Recomendamos Firecrawl — renderiza JavaScript e funciona melhor em SPAs."
                 : recommended === "perplexity"
@@ -592,6 +839,11 @@ Deno.serve(async (req) => {
         quality,
         scrapeMethod,
         scrapeStatus,
+        pageType,
+        pageTypeLabel: pageTypeLabel[pageType],
+        pageSignals,
+        triedMethods,
+        thresholds: quality.thresholds,
         preview: {
           length: pageContent.length,
           chars: quality.chars,
@@ -622,17 +874,24 @@ Deno.serve(async (req) => {
     }
 
     // Modo "auto" e qualidade ruim: tenta cascata automática (Firecrawl → Perplexity)
-    // sem precisar de novo clique do usuário.
+    // pulando métodos já tentados pelo usuário (passados em triedMethods).
+    const alreadyTried = new Set<string>([scrapeMethod, ...triedMethods]);
     if (mode === "auto" && !quality.ok && forceMethod !== "perplexity") {
-      // 1ª tentativa automática: Firecrawl, se conectado e ainda não usado
-      if (byProvider.firecrawl?.api_key && (scrapeMethod as string) !== "firecrawl") {
+      // 1ª tentativa automática: Firecrawl, se conectado, ainda não usado e adequado ao pageType
+      if (
+        byProvider.firecrawl?.api_key &&
+        !alreadyTried.has("firecrawl") &&
+        (pageType as PageType) !== "amp"
+      ) {
         await tryFirecrawl();
-        quality = assessContentQuality(pageContent);
+        alreadyTried.add("firecrawl");
+        quality = assessContentQuality(pageContent, thresholdAdj);
       }
-      // 2ª tentativa automática: Perplexity, se conectada
-      if (!quality.ok && byProvider.perplexity?.api_key) {
+      // 2ª tentativa automática: Perplexity, se conectada e ainda não usada
+      if (!quality.ok && byProvider.perplexity?.api_key && !alreadyTried.has("perplexity")) {
         await tryPerplexity();
-        quality = assessContentQuality(pageContent);
+        alreadyTried.add("perplexity");
+        quality = assessContentQuality(pageContent, thresholdAdj);
       }
 
       // Se ainda assim não atingiu qualidade mínima utilizável, devolve prévia + recomendação

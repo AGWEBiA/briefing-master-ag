@@ -1,5 +1,5 @@
 import { useEffect, useState } from "react";
-import { AlertTriangle, Link as LinkIcon, Loader2, RefreshCw, Sparkles, Star, Wand2 } from "lucide-react";
+import { AlertTriangle, Link as LinkIcon, Loader2, RefreshCw, Sparkles, Star, ThumbsDown, ThumbsUp, Wand2 } from "lucide-react";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import {
@@ -20,6 +20,7 @@ import { useAuth } from "@/contexts/AuthContext";
 
 type Engine = "lovable" | "openai" | "gemini";
 type ForceMethod = "fetch" | "firecrawl" | "perplexity";
+type PageType = "spa" | "amp" | "ssr" | "static" | "blocked" | "unknown";
 
 interface PreviewPayload {
   length: number;
@@ -42,14 +43,27 @@ interface ChoicePayload {
   hasFirecrawl: boolean;
   scrapeStatus?: number;
   scrapeMethod?: string;
-  recommended?: "fetch" | "firecrawl" | "perplexity" | null;
+  recommended?: ForceMethod | null;
   methods?: { fetch: MethodFlag; firecrawl: MethodFlag; perplexity: MethodFlag };
+  pageType?: PageType;
+  pageTypeLabel?: string;
+  pageSignals?: string[];
+  thresholds?: { ok: number; usable: number; adjustment: number };
 }
 
 interface Props {
   onApply: (data: Record<string, string>) => void;
   trigger?: React.ReactNode;
 }
+
+const PAGE_TYPE_BADGE: Record<PageType, { label: string; cls: string }> = {
+  spa: { label: "SPA (JS)", cls: "bg-warning/20 text-warning-foreground border-warning/40" },
+  amp: { label: "AMP", cls: "bg-primary/20 text-primary border-primary/40" },
+  ssr: { label: "SSR", cls: "bg-success/20 text-success border-success/40" },
+  static: { label: "HTML estático", cls: "bg-success/20 text-success border-success/40" },
+  blocked: { label: "Bloqueado", cls: "bg-destructive/20 text-destructive border-destructive/40" },
+  unknown: { label: "Tipo ?", cls: "bg-muted text-muted-foreground border-border" },
+};
 
 export const ReverseEngineerDialog = ({ onApply, trigger }: Props) => {
   const { user } = useAuth();
@@ -58,13 +72,15 @@ export const ReverseEngineerDialog = ({ onApply, trigger }: Props) => {
   const [engine, setEngine] = useState<Engine>("lovable");
   const [running, setRunning] = useState(false);
   const [choice, setChoice] = useState<ChoicePayload | null>(null);
+  const [tried, setTried] = useState<ForceMethod[]>([]);
+  const [feedbackSent, setFeedbackSent] = useState<"good" | "bad" | null>(null);
   const [available, setAvailable] = useState<{ openai: boolean; gemini: boolean; perplexity: boolean; firecrawl: boolean }>({
     openai: false, gemini: false, perplexity: false, firecrawl: false,
   });
 
   useEffect(() => {
     if (!open || !user) return;
-    setChoice(null);
+    setChoice(null); setTried([]); setFeedbackSent(null);
     (async () => {
       const { data } = await supabase
         .from("ai_integrations")
@@ -76,24 +92,20 @@ export const ReverseEngineerDialog = ({ onApply, trigger }: Props) => {
     })();
   }, [open, user]);
 
-  const run = async (forceMethod?: ForceMethod) => {
+  const run = async (forceMethod?: ForceMethod, opts?: { keepTried?: boolean }) => {
     if (!/^https?:\/\//i.test(url)) {
       toast.error("Informe uma URL válida (http/https).");
       return;
     }
-    if (engine === "openai" && !available.openai) {
-      toast.error("Conecte sua chave OpenAI em Integrações.");
-      return;
-    }
-    if (engine === "gemini" && !available.gemini) {
-      toast.error("Conecte sua chave Gemini em Integrações.");
-      return;
-    }
+    if (engine === "openai" && !available.openai) { toast.error("Conecte sua chave OpenAI em Integrações."); return; }
+    if (engine === "gemini" && !available.gemini) { toast.error("Conecte sua chave Gemini em Integrações."); return; }
 
     setRunning(true);
-    setChoice(null);
+    if (!opts?.keepTried) setFeedbackSent(null);
+
+    const triedMethods = forceMethod ? Array.from(new Set([...tried, forceMethod])) : tried;
     const { data, error } = await supabase.functions.invoke("reverse-engineer", {
-      body: { url, engine, mode: forceMethod ? "run" : "auto", forceMethod },
+      body: { url, engine, mode: forceMethod ? "run" : "auto", forceMethod, triedMethods },
     });
     setRunning(false);
 
@@ -103,19 +115,14 @@ export const ReverseEngineerDialog = ({ onApply, trigger }: Props) => {
       return;
     }
 
-    // Conteúdo fraco / site bloqueado → mostra opções
     if (data?.needsChoice) {
       setChoice(data as ChoicePayload);
+      if (forceMethod) setTried((t) => Array.from(new Set([...t, forceMethod])));
       return;
     }
 
     if (data?.error) {
-      const code = data.errorCode;
-      if (code === "SITE_BLOCKED") {
-        toast.error("Site bloqueou a leitura automatizada. Tente com Perplexity ou outro link.");
-      } else {
-        toast.error(data.error);
-      }
+      toast.error(data.errorCode === "SITE_BLOCKED" ? "Site bloqueou a leitura. Tente Perplexity ou outro link." : data.error);
       return;
     }
     if (!data?.data || Object.keys(data.data).length === 0) {
@@ -124,13 +131,54 @@ export const ReverseEngineerDialog = ({ onApply, trigger }: Props) => {
     }
 
     onApply(data.data as Record<string, string>);
-    toast.success(
-      `Briefing preenchido (${data.engine}${data.usedPerplexity ? " + Perplexity" : ""}${data.usedFirecrawl ? " + Firecrawl" : ""}).`,
-    );
-    setOpen(false);
-    setUrl("");
+    toast.success(`Briefing preenchido (${data.engine}${data.usedPerplexity ? " + Perplexity" : ""}${data.usedFirecrawl ? " + Firecrawl" : ""}).`);
+    setOpen(false); setUrl(""); setTried([]);
   };
 
+  // Tenta automaticamente o próximo método não-tentado, na ordem recomendada
+  const repeatScrape = async () => {
+    if (!choice) return;
+    const order: ForceMethod[] = [];
+    if (choice.recommended) order.push(choice.recommended);
+    (["firecrawl", "perplexity", "fetch"] as ForceMethod[]).forEach((m) => {
+      if (!order.includes(m)) order.push(m);
+    });
+    const next = order.find((m) => {
+      if (tried.includes(m)) return false;
+      const flag = choice.methods?.[m];
+      return flag?.available && !flag?.disabled;
+    });
+    if (!next) {
+      toast.info("Todos os métodos disponíveis já foram tentados. Tente outro link ou conecte mais integrações.");
+      return;
+    }
+    toast.info(`Tentando próximo método: ${next}…`);
+    await run(next, { keepTried: true });
+  };
+
+  const sendFeedback = async (rating: "good" | "bad") => {
+    if (!choice) return;
+    setFeedbackSent(rating);
+    const { data, error } = await supabase.functions.invoke("reverse-engineer", {
+      body: {
+        url, engine, mode: "feedback", rating,
+        ratingScore: choice.preview.score,
+        ratingMethod: choice.scrapeMethod,
+        ratingChars: choice.preview.chars,
+        ratingWords: choice.preview.words,
+        ratingPageType: choice.pageType,
+      },
+    });
+    if (error || data?.error) {
+      toast.error("Não foi possível salvar seu feedback.");
+      setFeedbackSent(null);
+      return;
+    }
+    const adj = data?.thresholdAdjustment ?? 0;
+    toast.success(
+      `Obrigado! Limiar ajustado para ${data?.newOkThreshold ?? "—"}/100 ${adj > 0 ? `(+${adj})` : adj < 0 ? `(${adj})` : "(sem mudança)"}.`,
+    );
+  };
 
   return (
     <Dialog open={open} onOpenChange={setOpen}>
@@ -160,7 +208,7 @@ export const ReverseEngineerDialog = ({ onApply, trigger }: Props) => {
               <Input
                 id="re-url"
                 value={url}
-                onChange={(e) => setUrl(e.target.value)}
+                onChange={(e) => { setUrl(e.target.value); setTried([]); setChoice(null); }}
                 placeholder="https://exemplo.com/produto"
                 className="pl-9"
                 autoFocus
@@ -187,8 +235,8 @@ export const ReverseEngineerDialog = ({ onApply, trigger }: Props) => {
           <Alert>
             <AlertDescription className="text-xs">
               <span className="font-medium">Extração de conteúdo:</span> usamos leitura direta da página por padrão.{" "}
-              {available.firecrawl && "🔥 Firecrawl ativo (extração avançada de SPAs/sites protegidos). "}
-              {available.perplexity && "🔎 Perplexity ativo (pesquisa de público-alvo + fallback se o site bloquear). "}
+              {available.firecrawl && "🔥 Firecrawl ativo. "}
+              {available.perplexity && "🔎 Perplexity ativo. "}
               {!available.firecrawl && !available.perplexity && "Conecte Firecrawl ou Perplexity para resultados melhores em sites que bloqueiam scraping."}{" "}
               <Link to="/integrations" className="text-primary underline">Gerenciar integrações</Link>
             </AlertDescription>
@@ -198,19 +246,34 @@ export const ReverseEngineerDialog = ({ onApply, trigger }: Props) => {
             <Alert variant="destructive" className="border-warning/40 bg-warning/10 text-foreground">
               <AlertTriangle className="h-4 w-4" />
               <AlertDescription className="space-y-3">
-                <div>
-                  <p className="font-medium">
-                    {choice.errorCode === "SITE_BLOCKED"
-                      ? `Site bloqueou a leitura${choice.scrapeStatus ? ` (HTTP ${choice.scrapeStatus})` : ""}`
-                      : "Conteúdo extraído insuficiente"}
-                  </p>
-                  <p className="text-xs text-muted-foreground mt-1">{choice.message}</p>
+                <div className="flex items-start justify-between gap-2">
+                  <div>
+                    <p className="font-medium">
+                      {choice.errorCode === "SITE_BLOCKED"
+                        ? `Site bloqueou a leitura${choice.scrapeStatus ? ` (HTTP ${choice.scrapeStatus})` : ""}`
+                        : "Conteúdo extraído insuficiente"}
+                    </p>
+                    <p className="text-xs text-muted-foreground mt-1">{choice.message}</p>
+                  </div>
+                  {choice.pageType && (
+                    <Badge variant="outline" className={`text-[10px] ${PAGE_TYPE_BADGE[choice.pageType].cls}`} title={choice.pageSignals?.join(" · ")}>
+                      {PAGE_TYPE_BADGE[choice.pageType].label}
+                    </Badge>
+                  )}
                 </div>
+
                 {/* Indicador de qualidade */}
                 <div className="rounded-md border bg-background/60 p-2.5 space-y-1.5">
                   <div className="flex items-center justify-between text-xs">
                     <span className="font-medium">Qualidade do conteúdo raspado</span>
-                    <span className="font-mono">{choice.preview.score}/100 · {choice.preview.level}</span>
+                    <span className="font-mono">
+                      {choice.preview.score}/100 · {choice.preview.level}
+                      {choice.thresholds && choice.thresholds.adjustment !== 0 && (
+                        <span className="ml-1 text-[10px] text-muted-foreground">
+                          (limiar {choice.thresholds.ok}{choice.thresholds.adjustment > 0 ? ` +${choice.thresholds.adjustment}` : ` ${choice.thresholds.adjustment}`})
+                        </span>
+                      )}
+                    </span>
                   </div>
                   <div className="relative h-1.5 w-full overflow-hidden rounded-full bg-secondary">
                     <div
@@ -229,6 +292,29 @@ export const ReverseEngineerDialog = ({ onApply, trigger }: Props) => {
                     <span>·</span>
                     <span>{choice.preview.words.toLocaleString("pt-BR")} palavras</span>
                     {choice.scrapeMethod && <><span>·</span><span>via {choice.scrapeMethod}</span></>}
+                  </div>
+
+                  {/* Feedback bom/ruim */}
+                  <div className="flex items-center justify-between gap-2 pt-1.5 border-t">
+                    <span className="text-[10px] text-muted-foreground">Esta avaliação ajuda?</span>
+                    <div className="flex gap-1">
+                      <Button
+                        type="button" size="sm" variant={feedbackSent === "good" ? "default" : "outline"}
+                        className="h-6 px-2 text-[10px] gap-1"
+                        disabled={!!feedbackSent}
+                        onClick={() => sendFeedback("good")}
+                      >
+                        <ThumbsUp className="h-3 w-3" /> Bom
+                      </Button>
+                      <Button
+                        type="button" size="sm" variant={feedbackSent === "bad" ? "default" : "outline"}
+                        className="h-6 px-2 text-[10px] gap-1"
+                        disabled={!!feedbackSent}
+                        onClick={() => sendFeedback("bad")}
+                      >
+                        <ThumbsDown className="h-3 w-3" /> Ruim
+                      </Button>
+                    </div>
                   </div>
                 </div>
 
@@ -262,7 +348,24 @@ export const ReverseEngineerDialog = ({ onApply, trigger }: Props) => {
                 )}
 
                 <div className="space-y-2">
-                  <p className="text-xs font-medium text-foreground">Escolha como prosseguir:</p>
+                  <div className="flex items-center justify-between">
+                    <p className="text-xs font-medium text-foreground">Escolha como prosseguir:</p>
+                    <Button
+                      type="button" size="sm" variant="secondary"
+                      onClick={repeatScrape} disabled={running}
+                      className="h-7 px-2 text-[11px] gap-1"
+                      title="Tenta automaticamente o próximo método disponível, mantendo o mesmo link"
+                    >
+                      <RefreshCw className={`h-3 w-3 ${running ? "animate-spin" : ""}`} /> Repetir raspagem
+                    </Button>
+                  </div>
+
+                  {tried.length > 0 && (
+                    <p className="text-[10px] text-muted-foreground">
+                      Já tentado: {tried.join(", ")}
+                    </p>
+                  )}
+
                   <div className="grid gap-2 sm:grid-cols-3">
                     {(["fetch", "firecrawl", "perplexity"] as const).map((id) => {
                       const meta = {
@@ -276,6 +379,7 @@ export const ReverseEngineerDialog = ({ onApply, trigger }: Props) => {
                         perplexity: { available: choice.hasPerplexity, disabled: false },
                       })[id];
                       const isRecommended = choice.recommended === id;
+                      const wasTried = tried.includes(id);
 
                       if (!flag.available) {
                         return (
@@ -289,9 +393,7 @@ export const ReverseEngineerDialog = ({ onApply, trigger }: Props) => {
                       }
                       return (
                         <Button
-                          key={id}
-                          type="button"
-                          size="sm"
+                          key={id} type="button" size="sm"
                           variant={isRecommended ? "default" : "outline"}
                           onClick={() => run(id)}
                           disabled={running || flag.disabled}
@@ -304,8 +406,8 @@ export const ReverseEngineerDialog = ({ onApply, trigger }: Props) => {
                             </Badge>
                           )}
                           <span className="flex items-center gap-1">
-                            {id === "fetch" && <RefreshCw className="h-3.5 w-3.5" />}
                             <span>{meta.icon} {meta.label}</span>
+                            {wasTried && <span className="text-[9px] opacity-70">(tentado)</span>}
                           </span>
                           <span className="text-[10px] opacity-80 font-normal">
                             {flag.disabled ? (flag.reason ?? "Indisponível") : meta.hint}
@@ -315,17 +417,14 @@ export const ReverseEngineerDialog = ({ onApply, trigger }: Props) => {
                     })}
                   </div>
                   <Button
-                    type="button"
-                    size="sm"
-                    variant="ghost"
-                    onClick={() => { setChoice(null); setUrl(""); }}
-                    disabled={running}
-                    className="w-full justify-start"
+                    type="button" size="sm" variant="ghost"
+                    onClick={() => { setChoice(null); setUrl(""); setTried([]); }}
+                    disabled={running} className="w-full justify-start"
                   >
                     Usar outro link
                   </Button>
                   <p className="text-[11px] text-muted-foreground">
-                    💡 Métodos abaixo do mínimo aparecem desabilitados; a alternativa <strong>Recomendada</strong> está destacada.
+                    💡 A página foi classificada como <strong>{choice.pageType ? PAGE_TYPE_BADGE[choice.pageType].label : "?"}</strong>; a recomendação se ajusta a esse tipo. Seu feedback recalibra o limiar de qualidade.
                   </p>
                 </div>
               </AlertDescription>
