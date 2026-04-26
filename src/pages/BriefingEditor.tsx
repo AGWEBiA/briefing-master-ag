@@ -23,6 +23,7 @@ import { FieldRenderer } from "@/components/briefing/FieldRenderer";
 import { StrategyPicker } from "@/components/briefing/StrategyPicker";
 import { ReverseEngineerDialog } from "@/components/briefing/ReverseEngineerDialog";
 import { EmpathyMapPreview } from "@/components/briefing/EmpathyMapPreview";
+import { AdsSuggestionsPanel } from "@/components/briefing/AdsSuggestionsPanel";
 import {
   FIXED_SECTIONS, getStrategy, type Section, type StrategyId,
 } from "@/lib/briefingSchema";
