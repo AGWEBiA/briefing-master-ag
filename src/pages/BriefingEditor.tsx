@@ -23,6 +23,7 @@ import { FieldRenderer } from "@/components/briefing/FieldRenderer";
 import { StrategyPicker } from "@/components/briefing/StrategyPicker";
 import { ReverseEngineerDialog } from "@/components/briefing/ReverseEngineerDialog";
 import { EmpathyMapPreview } from "@/components/briefing/EmpathyMapPreview";
+import { AdsSuggestionsPanel } from "@/components/briefing/AdsSuggestionsPanel";
 import {
   FIXED_SECTIONS, getStrategy, type Section, type StrategyId,
 } from "@/lib/briefingSchema";
@@ -47,6 +48,7 @@ const BriefingEditor = () => {
   const [exporting, setExporting] = useState(false);
   const [exportingFormat, setExportingFormat] = useState<ExportFormat | "report" | null>(null);
   const [suggesting, setSuggesting] = useState(false);
+  const [suggestingStrategy, setSuggestingStrategy] = useState(false);
   const [highlightFields, setHighlightFields] = useState<Set<string>>(new Set());
   const [showEmpathyErrors, setShowEmpathyErrors] = useState(false);
 
@@ -218,6 +220,39 @@ const BriefingEditor = () => {
     if (idx >= 0) setCurrentIndex(idx);
   };
 
+  const handleSuggestStrategy = async (overwrite = false) => {
+    if (!strategyId) {
+      toast.error("Escolha uma estratégia antes de pedir sugestões.");
+      return;
+    }
+    const hasBase =
+      (data.descricaoAvatar?.trim().length ?? 0) > 20 ||
+      (data.me_dores?.trim().length ?? 0) > 20 ||
+      (data.me_ganhos?.trim().length ?? 0) > 20;
+    if (!hasBase) {
+      toast.error("Preencha primeiro o Avatar e o Mapa da Empatia.");
+      return;
+    }
+    setSuggestingStrategy(true);
+    const { data: res, error } = await supabase.functions.invoke("suggest-strategy", {
+      body: { briefing: data, strategyId, overwrite },
+    });
+    setSuggestingStrategy(false);
+    if (error || res?.error) {
+      toast.error(res?.error ?? (error as { message?: string })?.message ?? "Falha ao sugerir estratégia.");
+      return;
+    }
+    const incoming = (res?.data ?? {}) as Record<string, string>;
+    const filledKeys = Object.keys(incoming);
+    if (filledKeys.length === 0) {
+      toast.info("Todos os campos da estratégia já estavam preenchidos. Use 'Sobrescrever' para regenerar.");
+      return;
+    }
+    setData((prev) => ({ ...prev, ...incoming }));
+    setHighlightFields(new Set(filledKeys));
+    toast.success(`${filledKeys.length} campo(s) da estratégia preenchido(s) pela IA.`);
+  };
+
   if (loading) {
     return (
       <div className="flex min-h-screen items-center justify-center">
@@ -372,6 +407,28 @@ const BriefingEditor = () => {
                 </div>
               )}
 
+              {/* CTA contextual nas seções da estratégia ativa */}
+              {strat && currentIndex >= FIXED_SECTIONS.length && (
+                <div className="flex flex-col gap-2 rounded-lg border border-primary/30 bg-primary-soft/30 p-3 sm:flex-row sm:items-center sm:justify-between">
+                  <div className="flex items-start gap-2 text-sm">
+                    <Sparkles className="mt-0.5 h-4 w-4 shrink-0 text-primary" />
+                    <span>
+                      Use a IA para preencher os campos textuais desta estratégia com base no Avatar e no Mapa da Empatia.
+                    </span>
+                  </div>
+                  <div className="flex shrink-0 gap-2">
+                    <Button size="sm" variant="outline" onClick={() => handleSuggestStrategy(false)} disabled={suggestingStrategy}>
+                      {suggestingStrategy ? <Loader2 className="mr-2 h-4 w-4 animate-spin" /> : <Sparkles className="mr-2 h-4 w-4" />}
+                      Preencher vazios
+                    </Button>
+                    <Button size="sm" onClick={() => handleSuggestStrategy(true)} disabled={suggestingStrategy}>
+                      <RefreshCw className="mr-2 h-4 w-4" />
+                      Sobrescrever tudo
+                    </Button>
+                  </div>
+                </div>
+              )}
+
               {/* Status do Mapa da Empatia */}
               {section.id === "mapaEmpatia" && !empathyValidation.ok && (
                 <div className="flex items-start gap-2 rounded-lg border border-destructive/40 bg-destructive/10 p-3 text-sm">
@@ -398,6 +455,7 @@ const BriefingEditor = () => {
                       toast.success("Estratégia selecionada — novas seções adicionadas.");
                     }}
                   />
+                  <AdsSuggestionsPanel briefing={data} />
                   <div className="border-t" />
                 </>
               )}
