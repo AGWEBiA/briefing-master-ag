@@ -350,6 +350,9 @@ const BriefingEditor = () => {
             <RefreshCw className="mr-2 h-4 w-4" /> Reiniciar
           </Button>
           <ReportButton />
+          <Button variant="outline" size="sm" onClick={() => openPreview("pdf")}>
+            <Eye className="mr-2 h-4 w-4" /> Pré-visualizar
+          </Button>
           <ExportDropdown />
         </div>
       </AppHeader>
