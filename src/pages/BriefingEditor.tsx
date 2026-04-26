@@ -1,14 +1,17 @@
 import { useEffect, useMemo, useRef, useState } from "react";
 import { useNavigate, useParams, Link } from "react-router-dom";
 import {
-  ArrowLeft, ChevronLeft, ChevronRight, Download, Loader2,
-  RefreshCw, Rocket, Save, Wand2,
+  ArrowLeft, ChevronLeft, ChevronRight, Download, FileText, FileType, Loader2,
+  RefreshCw, Rocket, Save, Sparkles, Wand2,
 } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardHeader } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
 import { Input } from "@/components/ui/input";
 import { Sheet, SheetContent, SheetTrigger } from "@/components/ui/sheet";
+import {
+  DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuTrigger,
+} from "@/components/ui/dropdown-menu";
 import { toast } from "sonner";
 import { Menu } from "lucide-react";
 
@@ -22,7 +25,7 @@ import { ReverseEngineerDialog } from "@/components/briefing/ReverseEngineerDial
 import {
   FIXED_SECTIONS, getStrategy, type Section, type StrategyId,
 } from "@/lib/briefingSchema";
-import { downloadMarkdown, exportBriefingMarkdown } from "@/lib/exportBriefing";
+import { exportBriefing, type ExportFormat } from "@/lib/exportBriefing";
 
 type Data = Record<string, string>;
 
