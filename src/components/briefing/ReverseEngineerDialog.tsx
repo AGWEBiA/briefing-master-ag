@@ -213,15 +213,18 @@ export const ReverseEngineerDialog = ({ onApply, trigger }: Props) => {
                     <span className="font-medium">Qualidade do conteúdo raspado</span>
                     <span className="font-mono">{choice.preview.score}/100 · {choice.preview.level}</span>
                   </div>
-                  <Progress
-                    value={choice.preview.score}
-                    className="h-1.5"
-                    indicatorClassName={
-                      choice.preview.level === "alta" ? "bg-success" :
-                      choice.preview.level === "média" ? "bg-primary" :
-                      choice.preview.level === "baixa" ? "bg-warning" : "bg-destructive"
-                    }
-                  />
+                  <div className="relative h-1.5 w-full overflow-hidden rounded-full bg-secondary">
+                    <div
+                      className={
+                        "h-full transition-all " + (
+                          choice.preview.level === "alta" ? "bg-success" :
+                          choice.preview.level === "média" ? "bg-primary" :
+                          choice.preview.level === "baixa" ? "bg-warning" : "bg-destructive"
+                        )
+                      }
+                      style={{ width: `${choice.preview.score}%` }}
+                    />
+                  </div>
                   <div className="flex flex-wrap gap-x-3 gap-y-0.5 text-[10px] text-muted-foreground">
                     <span>{choice.preview.length.toLocaleString("pt-BR")} caracteres</span>
                     <span>·</span>
