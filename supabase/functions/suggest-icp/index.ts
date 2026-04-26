@@ -187,14 +187,19 @@ Deno.serve(async (req) => {
       "• me_ganhos (GANHOS/NECESSIDADES): O que é sucesso para ele? Onde quer chegar? O que acabaria com seus problemas? Tangíveis (dinheiro, tempo, métricas com prazo) + intangíveis (orgulho, status, reconhecimento). ≥4 itens.\n\n" +
       "5. Devolva SEMPRE chamando a tool `suggest_icp`.";
 
-    const userPrompt =
-      `=== BRIEFING ATUAL DO PRODUTO ===\n${summary}\n\n` +
-      `=== TAREFA ===\n` +
-      `Defina o ICP (Perfil de Cliente Ideal) deste produto preenchendo todos os campos da tool 'suggest_icp'. ` +
-      `Comece pela descricaoAvatar (perfil completo: idade, profissão, momento de vida/carreira, comportamento de consumo). Em seguida derive dores, desejos, objeções, nível de consciência, canais e os 6 quadrantes do mapa da empatia (Xplane/Dave Gray) seguindo as perguntas-guia do system prompt. ` +
-      `Garanta coerência: as dores do ICP devem casar com a transformação prometida; os desejos com os benefícios; o nível de consciência com o preço e a complexidade do produto.`;
+    const userPrompt = onlyEmpathy
+      ? `=== BRIEFING ATUAL DO PRODUTO ===\n${summary}\n\n` +
+        `=== TAREFA ===\n` +
+        `Refaça APENAS o Mapa da Empatia (Xplane/Dave Gray) para este ICP, retornando os 6 quadrantes me_ve, me_ouve, me_pensaSente, me_falaFaz, me_dores e me_ganhos. ` +
+        `Cada quadrante deve ter itens concretos separados por nova linha (ou vírgula), respeitando os mínimos: VÊ/OUVE/PENSA-SENTE/FALA-FAZ ≥ 3 itens, DORES/GANHOS ≥ 4 itens. ` +
+        `Use a descrição do avatar, dores, desejos e objeções já presentes no briefing como base. Não retorne outros campos.`
+      : `=== BRIEFING ATUAL DO PRODUTO ===\n${summary}\n\n` +
+        `=== TAREFA ===\n` +
+        `Defina o ICP (Perfil de Cliente Ideal) deste produto preenchendo todos os campos da tool 'suggest_icp'. ` +
+        `Comece pela descricaoAvatar (perfil completo: idade, profissão, momento de vida/carreira, comportamento de consumo). Em seguida derive dores, desejos, objeções, nível de consciência, canais e os 6 quadrantes do mapa da empatia (Xplane/Dave Gray) seguindo as perguntas-guia do system prompt. ` +
+        `Garanta coerência: as dores do ICP devem casar com a transformação prometida; os desejos com os benefícios; o nível de consciência com o preço e a complexidade do produto.`;
 
-    const tool = buildToolSchema();
+    const tool = buildToolSchema(onlyEmpathy ? EMPATHY_KEYS : undefined);
     const r = await fetch(url, {
       method: "POST",
       headers: { Authorization: `Bearer ${apiKey}`, "Content-Type": "application/json" },
