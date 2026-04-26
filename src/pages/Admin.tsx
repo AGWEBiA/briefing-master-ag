@@ -412,13 +412,32 @@ const Admin = () => {
             <Table>
               <TableHeader>
                 <TableRow>
-                  <TableHead>Título</TableHead><TableHead>Usuário</TableHead>
+                  <TableHead>
+                    <button
+                      type="button"
+                      onClick={() => toggleBriefingSort("title")}
+                      className="flex items-center gap-1.5 font-medium hover:text-foreground"
+                    >
+                      Título
+                      <SortIcon active={briefingSort.key === "title"} dir={briefingSort.dir} />
+                    </button>
+                  </TableHead>
+                  <TableHead>Usuário</TableHead>
                   <TableHead>Estratégia</TableHead><TableHead>Status</TableHead>
-                  <TableHead>Atualizado</TableHead>
+                  <TableHead>
+                    <button
+                      type="button"
+                      onClick={() => toggleBriefingSort("updated")}
+                      className="flex items-center gap-1.5 font-medium hover:text-foreground"
+                    >
+                      Atualizado
+                      <SortIcon active={briefingSort.key === "updated"} dir={briefingSort.dir} />
+                    </button>
+                  </TableHead>
                 </TableRow>
               </TableHeader>
               <TableBody>
-                {briefings.map((b) => {
+                {sortedBriefings.map((b) => {
                   const s = getStrategy(b.strategy);
                   return (
                     <TableRow key={b.id}>
