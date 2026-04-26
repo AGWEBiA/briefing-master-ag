@@ -599,18 +599,78 @@ Deno.serve(async (req) => {
       engine = "lovable",
       mode = "auto",
       forceMethod,
+      triedMethods = [],
+      // Feedback submission
+      rating,
+      ratingScore,
+      ratingMethod,
+      ratingChars,
+      ratingWords,
+      ratingPageType,
     } = body as {
       url?: string;
       engine?: "lovable" | "openai" | "gemini";
-      // "auto" = comportamento atual; "inspect" = só raspar e devolver prévia/qualidade; "run" = forçar execução com forceMethod
-      mode?: "auto" | "inspect" | "run";
+      // "auto" = comportamento padrão; "inspect" = só raspar e devolver prévia/qualidade;
+      // "run" = forçar execução com forceMethod; "feedback" = grava avaliação do usuário
+      mode?: "auto" | "inspect" | "run" | "feedback";
       forceMethod?: "fetch" | "firecrawl" | "perplexity";
+      // Métodos já tentados pelo usuário no mesmo URL — evita repetir na cascata automática
+      triedMethods?: Array<"fetch" | "firecrawl" | "perplexity" | "perplexity-fallback">;
+      rating?: "good" | "bad";
+      ratingScore?: number;
+      ratingMethod?: string;
+      ratingChars?: number;
+      ratingWords?: number;
+      ratingPageType?: string;
     };
 
     if (!url || !/^https?:\/\//i.test(url)) {
       return new Response(
         JSON.stringify({ error: "URL inválida. Use http:// ou https://", errorCode: "INVALID_URL" }),
         { status: 400, headers: { ...corsHeaders, "Content-Type": "application/json" } },
+      );
+    }
+
+    // Util: extrai host
+    let host = "";
+    try { host = new URL(url).hostname.replace(/^www\./, ""); } catch { host = ""; }
+
+    // === Modo "feedback": registra avaliação e devolve novo limiar ===
+    if (mode === "feedback") {
+      if (rating !== "good" && rating !== "bad") {
+        return new Response(
+          JSON.stringify({ error: "rating deve ser 'good' ou 'bad'." }),
+          { status: 400, headers: { ...corsHeaders, "Content-Type": "application/json" } },
+        );
+      }
+      const score = Math.max(0, Math.min(100, Number(ratingScore ?? 0) | 0));
+      const { error: insErr } = await supabase.from("scrape_feedback").insert({
+        user_id: userId,
+        host,
+        url,
+        method: ratingMethod ?? "unknown",
+        score,
+        chars: Math.max(0, Number(ratingChars ?? 0) | 0),
+        words: Math.max(0, Number(ratingWords ?? 0) | 0),
+        page_type: ratingPageType ?? null,
+        rating,
+      });
+      if (insErr) {
+        console.error("feedback insert error:", insErr);
+        return new Response(
+          JSON.stringify({ error: "Falha ao salvar feedback." }),
+          { status: 500, headers: { ...corsHeaders, "Content-Type": "application/json" } },
+        );
+      }
+      const newAdj = await computeThresholdAdjustment(supabase, userId, host);
+      return new Response(
+        JSON.stringify({
+          ok: true,
+          host,
+          thresholdAdjustment: newAdj,
+          newOkThreshold: Math.max(20, Math.min(90, QUALITY_MIN_OK_BASE + newAdj)),
+        }),
+        { status: 200, headers: { ...corsHeaders, "Content-Type": "application/json" } },
       );
     }
 
@@ -625,6 +685,9 @@ Deno.serve(async (req) => {
       (integrations ?? []).map((i) => [i.provider, i]),
     ) as Record<string, { api_key: string; default_model: string | null }>;
 
+    // Ajuste de limiar baseado no histórico de feedback
+    const thresholdAdj = await computeThresholdAdjustment(supabase, userId, host);
+
     // 1) Scrape — segue forceMethod quando informado
     let pageContent = "";
     type ScrapeMethod = "firecrawl" | "fetch" | "perplexity-fallback";
@@ -632,12 +695,24 @@ Deno.serve(async (req) => {
     let scrapeStatus = 0;
     let scrapeBlocked = false;
     let scrapeReason: string | undefined;
+    let pageType: PageType = "unknown";
+    let pageSignals: string[] = [];
 
     const tryFirecrawl = async () => {
       if (!byProvider.firecrawl?.api_key) return false;
       try {
         const c = await scrapeWithFirecrawl(url, byProvider.firecrawl.api_key);
-        if (c) { pageContent = c; scrapeMethod = "firecrawl"; return true; }
+        if (c) {
+          pageContent = c;
+          scrapeMethod = "firecrawl";
+          // Firecrawl rendeniza JS — tipicamente devolve markdown estruturado.
+          // Se ainda assim vier curto, mantém pageType detectado anteriormente (se houver).
+          if (pageType === "unknown") {
+            pageType = c.length > 1500 ? "ssr" : "spa";
+            pageSignals = [`Firecrawl entregou ${c.length} chars`];
+          }
+          return true;
+        }
       } catch (e) {
         console.warn("Firecrawl falhou:", (e as Error).message);
         scrapeReason = `Firecrawl: ${(e as Error).message}`;
@@ -649,6 +724,8 @@ Deno.serve(async (req) => {
       const out = await scrapeBasic(url);
       scrapeStatus = out.status;
       scrapeBlocked = out.blocked;
+      pageType = out.pageType;
+      pageSignals = out.pageSignals;
       if (out.content) { pageContent = out.content; scrapeMethod = "fetch"; return true; }
       scrapeReason = out.reason;
       return false;
@@ -682,13 +759,17 @@ Deno.serve(async (req) => {
     } else if (forceMethod === "fetch") {
       await tryFetch();
     } else {
-      // Ordem padrão: firecrawl (se conectado) → fetch → perplexity (fallback)
-      const ok = await tryFirecrawl();
-      if (!ok) await tryFetch();
+      // Ordem padrão: fetch primeiro para detectar pageType e decidir se vale Firecrawl
+      await tryFetch();
+      // Se conteúdo curto/bloqueado e Firecrawl disponível → tenta Firecrawl
+      const initialQ = assessContentQuality(pageContent, thresholdAdj);
+      if (!initialQ.ok && byProvider.firecrawl?.api_key) {
+        await tryFirecrawl();
+      }
     }
 
-    // Avaliação de qualidade do conteúdo já raspado
-    let quality = assessContentQuality(pageContent);
+    // Avaliação de qualidade do conteúdo já raspado, com limiar ajustado por feedback
+    let quality = assessContentQuality(pageContent, thresholdAdj);
 
     // Helper para montar o payload de "needsChoice" com prévia rica + recomendação
     const buildChoicePayload = (extra?: Partial<Record<string, unknown>>) => {
@@ -699,27 +780,41 @@ Deno.serve(async (req) => {
         hasFirecrawl,
         hasPerplexity,
         blocked: scrapeBlocked,
+        pageType,
       });
 
       // Bloqueio automático: método que claramente não vai funcionar fica desabilitado
       const methods = {
         fetch: {
           available: true,
-          disabled: scrapeBlocked && scrapeMethod === "fetch",
+          disabled: (scrapeBlocked && scrapeMethod === "fetch") || pageType === "spa",
           reason: scrapeBlocked && scrapeMethod === "fetch"
             ? `Bloqueado pelo site (HTTP ${scrapeStatus || "?"})`
+            : pageType === "spa"
+            ? "Página é SPA — fetch direto não vai resolver"
             : undefined,
         },
         firecrawl: {
           available: hasFirecrawl,
-          disabled: false,
-          reason: hasFirecrawl ? undefined : "Conecte Firecrawl em Integrações",
+          disabled: pageType === "amp", // AMP já tem bom HTML; Firecrawl pouco agrega
+          reason: !hasFirecrawl
+            ? "Conecte Firecrawl em Integrações"
+            : pageType === "amp" ? "AMP já entrega HTML estático" : undefined,
         },
         perplexity: {
           available: hasPerplexity,
           disabled: false,
           reason: hasPerplexity ? undefined : "Conecte Perplexity em Integrações",
         },
+      };
+
+      const pageTypeLabel: Record<PageType, string> = {
+        spa: "SPA (renderizado por JavaScript)",
+        amp: "AMP (HTML acelerado)",
+        ssr: "SSR (renderizado no servidor)",
+        static: "HTML estático tradicional",
+        blocked: "Bloqueado pelo servidor",
+        unknown: "Tipo não identificado",
       };
 
       return {
@@ -733,7 +828,7 @@ Deno.serve(async (req) => {
                 ? "Recomendamos extrair com Firecrawl (renderiza JS)."
                 : "Conecte Firecrawl ou Perplexity para contornar."
             }`
-          : `Conteúdo extraído tem qualidade ${quality.level} (${quality.score}/100, ${quality.chars} caracteres, ${quality.words} palavras). ${
+          : `Conteúdo extraído tem qualidade ${quality.level} (${quality.score}/100, limiar ${quality.thresholds.ok}, ${quality.chars} caracteres, ${quality.words} palavras). Página classificada como ${pageTypeLabel[pageType]}. ${
               recommended === "firecrawl"
                 ? "Recomendamos Firecrawl — renderiza JavaScript e funciona melhor em SPAs."
                 : recommended === "perplexity"
@@ -743,6 +838,11 @@ Deno.serve(async (req) => {
         quality,
         scrapeMethod,
         scrapeStatus,
+        pageType,
+        pageTypeLabel: pageTypeLabel[pageType],
+        pageSignals,
+        triedMethods,
+        thresholds: quality.thresholds,
         preview: {
           length: pageContent.length,
           chars: quality.chars,
@@ -773,17 +873,24 @@ Deno.serve(async (req) => {
     }
 
     // Modo "auto" e qualidade ruim: tenta cascata automática (Firecrawl → Perplexity)
-    // sem precisar de novo clique do usuário.
+    // pulando métodos já tentados pelo usuário (passados em triedMethods).
+    const alreadyTried = new Set<string>([scrapeMethod, ...triedMethods]);
     if (mode === "auto" && !quality.ok && forceMethod !== "perplexity") {
-      // 1ª tentativa automática: Firecrawl, se conectado e ainda não usado
-      if (byProvider.firecrawl?.api_key && (scrapeMethod as string) !== "firecrawl") {
+      // 1ª tentativa automática: Firecrawl, se conectado, ainda não usado e adequado ao pageType
+      if (
+        byProvider.firecrawl?.api_key &&
+        !alreadyTried.has("firecrawl") &&
+        pageType !== "amp"
+      ) {
         await tryFirecrawl();
-        quality = assessContentQuality(pageContent);
+        alreadyTried.add("firecrawl");
+        quality = assessContentQuality(pageContent, thresholdAdj);
       }
-      // 2ª tentativa automática: Perplexity, se conectada
-      if (!quality.ok && byProvider.perplexity?.api_key) {
+      // 2ª tentativa automática: Perplexity, se conectada e ainda não usada
+      if (!quality.ok && byProvider.perplexity?.api_key && !alreadyTried.has("perplexity")) {
         await tryPerplexity();
-        quality = assessContentQuality(pageContent);
+        alreadyTried.add("perplexity");
+        quality = assessContentQuality(pageContent, thresholdAdj);
       }
 
       // Se ainda assim não atingiu qualidade mínima utilizável, devolve prévia + recomendação
