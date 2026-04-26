@@ -142,6 +142,7 @@ const BriefingEditor = () => {
     <div className="min-h-screen bg-background">
       <AppHeader>
         <div className="hidden items-center gap-2 md:flex">
+          <ReverseEngineerDialog onApply={handleReverseEngineerApply} />
           <Button variant="ghost" size="sm" onClick={handleReset}>
             <RefreshCw className="mr-2 h-4 w-4" /> Reiniciar
           </Button>
