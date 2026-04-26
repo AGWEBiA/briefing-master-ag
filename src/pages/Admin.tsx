@@ -231,9 +231,44 @@ const Admin = () => {
                     </TableCell>
                     <TableCell className="text-sm text-muted-foreground">{u.email ?? "—"}</TableCell>
                     <TableCell>
-                      {u.is_admin
-                        ? <Badge className="bg-primary text-primary-foreground">Admin</Badge>
-                        : <Badge variant="outline">Usuário</Badge>}
+                      <div className="flex items-center gap-2">
+                        <Switch
+                          checked={u.is_admin}
+                          disabled={u.id === user?.id}
+                          aria-label="Alternar permissão de admin"
+                          onCheckedChange={async (checked) => {
+                            if (u.id === user?.id) return;
+                            // Optimistic update
+                            const prev = u.is_admin;
+                            setUsers((list) => list.map((x) =>
+                              x.id === u.id
+                                ? { ...x, is_admin: checked, roles: checked
+                                    ? Array.from(new Set([...x.roles, "admin"]))
+                                    : x.roles.filter((r) => r !== "admin") }
+                                : x
+                            ));
+                            const { data, error } = await supabase.functions.invoke("admin-users", {
+                              body: { action: "set_admin", id: u.id, is_admin: checked },
+                            });
+                            if (error || data?.error) {
+                              // rollback
+                              setUsers((list) => list.map((x) =>
+                                x.id === u.id
+                                  ? { ...x, is_admin: prev, roles: prev
+                                      ? Array.from(new Set([...x.roles, "admin"]))
+                                      : x.roles.filter((r) => r !== "admin") }
+                                  : x
+                              ));
+                              toast.error(data?.error ?? "Falha ao atualizar permissão");
+                            } else {
+                              toast.success(checked ? "Promovido a admin" : "Removido de admin");
+                            }
+                          }}
+                        />
+                        {u.is_admin
+                          ? <Badge className="bg-primary text-primary-foreground">Admin</Badge>
+                          : <Badge variant="outline">Usuário</Badge>}
+                      </div>
                     </TableCell>
                     <TableCell className="text-sm">
                       {u.last_sign_in_at
