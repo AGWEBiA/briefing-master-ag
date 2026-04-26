@@ -120,10 +120,26 @@ async function scrapeBasic(url: string): Promise<string> {
 }
 
 async function researchWithPerplexity(
-  query: string,
+  pageContent: string,
+  url: string,
   apiKey: string,
   model = "sonar",
-): Promise<string> {
+): Promise<{ content: string; citations: string[] }> {
+  // Etapa 1: extrair nicho/subnicho/público a partir da página
+  const trimmed = pageContent.slice(0, 6000);
+  const userQuery =
+    `Com base no conteúdo abaixo (extraído de ${url}), faça uma pesquisa aprofundada SOMENTE em fontes públicas verificáveis sobre o PÚBLICO-ALVO do produto.\n\n` +
+    `CONTEÚDO DA PÁGINA:\n"""\n${trimmed}\n"""\n\n` +
+    `INSTRUÇÕES OBRIGATÓRIAS:\n` +
+    `1. Identifique o NICHO e SUBNICHO do produto.\n` +
+    `2. Descreva o AVATAR (perfil demográfico/psicográfico) com base em fontes reais do nicho.\n` +
+    `3. Liste DORES, DESEJOS e OBJEÇÕES típicas desse público no subnicho identificado.\n` +
+    `4. Levante POSICIONAMENTO e DIFERENCIAIS de concorrentes diretos no mesmo subnicho.\n` +
+    `5. Inclua CANAIS ONLINE onde esse público se concentra.\n` +
+    `6. NÃO invente números, nomes próprios, depoimentos ou estatísticas. Se não houver fonte clara, escreva "não verificado".\n` +
+    `7. Cite as fontes ao final de cada bloco entre colchetes [URL].\n` +
+    `Formato: tópicos curtos e objetivos em português do Brasil.`;
+
   const r = await fetch("https://api.perplexity.ai/chat/completions", {
     method: "POST",
     headers: {
@@ -136,16 +152,21 @@ async function researchWithPerplexity(
         {
           role: "system",
           content:
-            "Você é um pesquisador de mercado. Resuma o público, dores, desejos, posicionamento e diferenciais que aparecem em fontes públicas.",
+            "Você é um pesquisador de mercado sênior especializado em infoprodutos. Trabalha SOMENTE com informações verificáveis em fontes públicas. Nunca inventa dados, números, nomes ou estatísticas. Quando uma informação não puder ser confirmada, escreve explicitamente 'não verificado'. Sempre responde em português do Brasil.",
         },
-        { role: "user", content: query },
+        { role: "user", content: userQuery },
       ],
-      max_tokens: 800,
+      temperature: 0.1,
+      max_tokens: 1500,
+      return_citations: true,
     }),
   });
   const data = await r.json();
   if (!r.ok) throw new Error(`Perplexity: ${data?.error?.message ?? r.statusText}`);
-  return data?.choices?.[0]?.message?.content ?? "";
+  return {
+    content: data?.choices?.[0]?.message?.content ?? "",
+    citations: data?.citations ?? [],
+  };
 }
 
 // Chama LLM com tool calling — gateway depende do engine
@@ -289,15 +310,21 @@ Deno.serve(async (req) => {
       });
     }
 
-    // 2) Pesquisa adicional (opcional)
+    // 2) Pesquisa adicional (opcional) — focada em público-alvo/nicho
+
+    // 2) Pesquisa adicional (opcional) — focada em público-alvo/nicho
     let research = "";
+    let citations: string[] = [];
     if (byProvider.perplexity?.api_key) {
       try {
-        research = await researchWithPerplexity(
-          `Pesquise no Google e em fontes públicas informações relevantes sobre o produto/oferta da página ${url}. Resuma público-alvo, dores, desejos, diferenciais e posicionamento.`,
+        const res = await researchWithPerplexity(
+          pageContent,
+          url,
           byProvider.perplexity.api_key,
           byProvider.perplexity.default_model ?? "sonar",
         );
+        research = res.content;
+        citations = res.citations;
       } catch (e) {
         console.warn("Perplexity falhou:", (e as Error).message);
       }
@@ -323,15 +350,28 @@ Deno.serve(async (req) => {
     }
 
     const systemPrompt =
-      "Você é um especialista em marketing de infoprodutos. Sua tarefa é preencher um briefing estruturado com base em uma página web e pesquisa adicional. Use português do Brasil. Para listas (módulos, bônus), use texto com itens separados por quebra de linha. Quando uma informação não estiver clara, faça uma inferência conservadora baseada no contexto, sem inventar números ou nomes específicos. Devolva SEMPRE chamando a tool fill_briefing.";
+      "Você é um especialista sênior em marketing de infoprodutos preenchendo um briefing estruturado.\n\n" +
+      "REGRAS ANTI-ALUCINAÇÃO (OBRIGATÓRIAS):\n" +
+      "1. Use APENAS informações presentes no conteúdo da página ou na pesquisa externa fornecida. Nunca invente fatos.\n" +
+      "2. NUNCA crie números, preços, datas, nomes próprios, depoimentos ou estatísticas que não estejam explícitos nas fontes.\n" +
+      "3. Quando uma informação não estiver disponível ou for ambígua, deixe o campo como string vazia (\"\") em vez de adivinhar.\n" +
+      "4. Para dores, desejos, objeções e mapa da empatia, baseie-se no público-alvo e subnicho identificados na pesquisa externa; se não houver pesquisa, infira de forma CONSERVADORA e GENÉRICA, sem citar dados específicos.\n" +
+      "5. Diferencie claramente o que é FATO (extraído da página/pesquisa) do que é INFERÊNCIA conservadora — em caso de dúvida, prefira deixar vazio.\n" +
+      "6. Use português do Brasil. Para listas (módulos, bônus), separe itens por quebra de linha.\n" +
+      "7. Devolva SEMPRE chamando a tool fill_briefing.";
 
     const userPrompt =
       `URL analisada: ${url}\n\n` +
       `=== CONTEÚDO DA PÁGINA (markdown/texto) ===\n${pageContent}\n\n` +
       (research
-        ? `=== PESQUISA EXTERNA (Perplexity) ===\n${research}\n\n`
+        ? `=== PESQUISA EXTERNA SOBRE PÚBLICO-ALVO E NICHO (Perplexity) ===\n${research}\n\n` +
+          (citations.length
+            ? `Fontes citadas: ${citations.slice(0, 10).join(", ")}\n\n`
+            : "")
         : "") +
-      `=== INSTRUÇÕES ===\nPreencha o máximo possível dos campos do briefing usando a tool 'fill_briefing'. Inclua o Mapa da Empatia (me_*) com base no avatar inferido.`;
+      `=== INSTRUÇÕES ===\n` +
+      `Preencha os campos do briefing usando a tool 'fill_briefing'. Inclua o Mapa da Empatia (me_*) baseado no avatar identificado na pesquisa. ` +
+      `Lembre-se: deixe vazio (\"\") qualquer campo cuja informação não esteja claramente suportada pelas fontes — não invente.`;
 
     const filled = await callLLMWithTool({
       engine, apiKey: engineKey, model: engineModel, systemPrompt, userPrompt,
@@ -342,6 +382,7 @@ Deno.serve(async (req) => {
         data: filled,
         usedFirecrawl: !!byProvider.firecrawl?.api_key,
         usedPerplexity: !!byProvider.perplexity?.api_key && !!research,
+        citations,
         engine,
         model: engineModel,
       }),
