@@ -495,17 +495,17 @@ export function exportBriefingPdf(
       writeWrapped(data.nicho, 13, { color: PALETTE.body, align: "center", lineGap: 8 });
     }
 
-    // pílula da estratégia
-    const stratLabel = strat ? `${strat.emoji} ${strat.name}` : "Estratégia não selecionada";
+    // pílula da estratégia (sem emoji — Helvetica não suporta)
+    const stratLabel = strat ? strat.name.toUpperCase() : "ESTRATÉGIA NÃO SELECIONADA";
     doc.setFont("helvetica", "bold");
     doc.setFontSize(10.5);
     const tw = doc.getTextWidth(stratLabel);
-    const padX = 14, padY = 7, pillW = tw + padX * 2, pillH = 22;
+    const padX = 16, pillW = tw + padX * 2, pillH = 24;
     const pillX = (pageW - pillW) / 2;
     setFill(strat ? PALETTE.brandSoft : [243, 244, 246]);
-    doc.roundedRect(pillX, y, pillW, pillH, 11, 11, "F");
+    doc.roundedRect(pillX, y, pillW, pillH, 12, 12, "F");
     setText(strat ? [30, 64, 175] : PALETTE.muted);
-    doc.text(stratLabel, pageW / 2, y + 14.5, { align: "center" });
+    doc.text(stratLabel, pageW / 2, y + 15.5, { align: "center" });
     y += pillH + 32;
 
     // barra de completude
