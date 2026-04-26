@@ -161,6 +161,17 @@ const Admin = () => {
     ?? users.find((p) => p.id === uid)?.email
     ?? uid.slice(0, 8);
 
+  const filteredUsers = users.filter((u) => {
+    if (userRoleFilter === "admin" && !u.is_admin) return false;
+    if (userRoleFilter === "user" && u.is_admin) return false;
+    const q = userSearch.trim().toLowerCase();
+    if (!q) return true;
+    return (
+      (u.email ?? "").toLowerCase().includes(q) ||
+      (u.display_name ?? "").toLowerCase().includes(q)
+    );
+  });
+
   return (
     <div className="min-h-screen bg-background">
       <AppHeader />
