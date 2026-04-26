@@ -121,6 +121,13 @@ const BriefingEditor = () => {
     toast.success("Formulário reiniciado.");
   };
 
+  const handleReverseEngineerApply = (incoming: Record<string, string>) => {
+    // Sobrescreve tudo: substitui data pelo retorno da IA
+    setData({ ...incoming });
+    setCurrentIndex(0);
+    setVisited(new Set());
+  };
+
   if (loading) {
     return (
       <div className="flex min-h-screen items-center justify-center">
