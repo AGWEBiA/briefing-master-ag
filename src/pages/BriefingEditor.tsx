@@ -181,9 +181,24 @@ const BriefingEditor = () => {
           <Button variant="ghost" size="sm" onClick={handleReset}>
             <RefreshCw className="mr-2 h-4 w-4" /> Reiniciar
           </Button>
-          <Button variant="outline" size="sm" onClick={handleExport}>
-            <Download className="mr-2 h-4 w-4" /> Exportar
-          </Button>
+          <DropdownMenu>
+            <DropdownMenuTrigger asChild>
+              <Button variant="outline" size="sm" disabled={exporting}>
+                <Download className="mr-2 h-4 w-4" /> Exportar
+              </Button>
+            </DropdownMenuTrigger>
+            <DropdownMenuContent align="end">
+              <DropdownMenuItem onClick={() => handleExport("pdf")}>
+                <FileType className="mr-2 h-4 w-4" /> PDF (.pdf)
+              </DropdownMenuItem>
+              <DropdownMenuItem onClick={() => handleExport("doc")}>
+                <FileText className="mr-2 h-4 w-4" /> Word (.doc)
+              </DropdownMenuItem>
+              <DropdownMenuItem onClick={() => handleExport("md")}>
+                <FileText className="mr-2 h-4 w-4" /> Markdown (.md)
+              </DropdownMenuItem>
+            </DropdownMenuContent>
+          </DropdownMenu>
         </div>
       </AppHeader>
 
