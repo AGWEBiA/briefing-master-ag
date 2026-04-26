@@ -203,6 +203,26 @@ export const FIXED_SECTIONS: Section[] = [
       ]},
     ],
   },
+  {
+    id: "riscos",
+    title: "Riscos e Viabilidade",
+    icon: ShieldAlert,
+    groups: [
+      { label: "Mapa de Riscos", fields: [
+        { id: "riscosPrincipais", label: "Principais Riscos do Lançamento", type: "textarea", rows: 4, hint: "Liste de 3 a 5 riscos críticos: operacionais, financeiros, de mercado, de produto, de equipe ou de imagem." },
+        { id: "planoMitigacao", label: "Plano de Mitigação", type: "textarea", rows: 4, hint: "Para cada risco listado acima, descreva a ação preventiva ou plano B." },
+      ]},
+      { label: "Viabilidade", fields: [
+        { id: "pontosFortes", label: "Pontos Fortes do Projeto", type: "textarea", rows: 3, hint: "Vantagens competitivas, ativos disponíveis, equipe, base, expertise..." },
+        { id: "desafiosProjeto", label: "Principais Desafios", type: "textarea", rows: 3, hint: "Gargalos, lacunas e dependências críticas que podem comprometer o lançamento." },
+      ]},
+      { label: "Checklist de Validação", fields: [
+        { id: "checkProdutoValidado", label: "Produto validado?", type: "radio", options: ["Sim", "Parcial", "Não"] },
+        { id: "checkOfertaValidada", label: "Oferta validada?", type: "radio", options: ["Sim", "Parcial", "Não"] },
+        { id: "checkEstrategiaDefinida", label: "Estratégia definida?", type: "radio", options: ["Sim", "Parcial", "Não"] },
+      ]},
+    ],
+  },
 ];
 
 // ============ Strategies ============
