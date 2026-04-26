@@ -306,11 +306,12 @@ const Admin = () => {
             <Table>
               <TableHeader>
                 <TableRow>
-                  <TableHead>
+                  <TableHead aria-sort={ariaSortFor(userSort.key === "name", userSort.dir)}>
                     <button
                       type="button"
                       onClick={() => toggleUserSort("name")}
                       className="flex items-center gap-1.5 font-medium hover:text-foreground"
+                      aria-label={sortLabel("Nome", userSort.key === "name", userSort.dir)}
                     >
                       Nome
                       <SortIcon active={userSort.key === "name"} dir={userSort.dir} />
@@ -318,11 +319,12 @@ const Admin = () => {
                   </TableHead>
                   <TableHead>Email</TableHead>
                   <TableHead>Role</TableHead>
-                  <TableHead>
+                  <TableHead aria-sort={ariaSortFor(userSort.key === "last_sign_in", userSort.dir)}>
                     <button
                       type="button"
                       onClick={() => toggleUserSort("last_sign_in")}
                       className="flex items-center gap-1.5 font-medium hover:text-foreground"
+                      aria-label={sortLabel("Último acesso", userSort.key === "last_sign_in", userSort.dir)}
                     >
                       Último acesso
                       <SortIcon active={userSort.key === "last_sign_in"} dir={userSort.dir} />
