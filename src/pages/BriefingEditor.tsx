@@ -455,6 +455,7 @@ const BriefingEditor = () => {
                       toast.success("Estratégia selecionada — novas seções adicionadas.");
                     }}
                   />
+                  <AdsSuggestionsPanel briefing={data} />
                   <div className="border-t" />
                 </>
               )}
