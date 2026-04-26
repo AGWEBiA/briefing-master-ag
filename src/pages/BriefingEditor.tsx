@@ -298,7 +298,15 @@ const BriefingEditor = () => {
             </CardContent>
           </Card>
 
-          <div className="flex gap-2 md:hidden">
+          <div className="flex flex-wrap gap-2 md:hidden">
+            <ReverseEngineerDialog
+              onApply={handleReverseEngineerApply}
+              trigger={
+                <Button size="sm" className="gap-2">
+                  <Wand2 className="h-4 w-4" /> Engenharia Reversa
+                </Button>
+              }
+            />
             <Button variant="outline" size="sm" onClick={handleReset}>
               <RefreshCw className="mr-2 h-4 w-4" /> Reiniciar
             </Button>
