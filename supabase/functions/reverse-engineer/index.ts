@@ -327,6 +327,27 @@ Deno.serve(async (req) => {
     // 3) Engine de LLM
     let engineKey = "";
     let engineModel = "";
+    // 2) Pesquisa adicional (opcional) — focada em público-alvo/nicho
+    let research = "";
+    let citations: string[] = [];
+    if (byProvider.perplexity?.api_key) {
+      try {
+        const res = await researchWithPerplexity(
+          pageContent,
+          url,
+          byProvider.perplexity.api_key,
+          byProvider.perplexity.default_model ?? "sonar",
+        );
+        research = res.content;
+        citations = res.citations;
+      } catch (e) {
+        console.warn("Perplexity falhou:", (e as Error).message);
+      }
+    }
+
+    // 3) Engine de LLM
+    let engineKey = "";
+    let engineModel = "";
     if (engine === "lovable") {
       if (!LOVABLE_API_KEY) throw new Error("Lovable AI não está configurado.");
       engineKey = LOVABLE_API_KEY;
@@ -344,15 +365,28 @@ Deno.serve(async (req) => {
     }
 
     const systemPrompt =
-      "Você é um especialista em marketing de infoprodutos. Sua tarefa é preencher um briefing estruturado com base em uma página web e pesquisa adicional. Use português do Brasil. Para listas (módulos, bônus), use texto com itens separados por quebra de linha. Quando uma informação não estiver clara, faça uma inferência conservadora baseada no contexto, sem inventar números ou nomes específicos. Devolva SEMPRE chamando a tool fill_briefing.";
+      "Você é um especialista sênior em marketing de infoprodutos preenchendo um briefing estruturado.\n\n" +
+      "REGRAS ANTI-ALUCINAÇÃO (OBRIGATÓRIAS):\n" +
+      "1. Use APENAS informações presentes no conteúdo da página ou na pesquisa externa fornecida. Nunca invente fatos.\n" +
+      "2. NUNCA crie números, preços, datas, nomes próprios, depoimentos ou estatísticas que não estejam explícitos nas fontes.\n" +
+      "3. Quando uma informação não estiver disponível ou for ambígua, deixe o campo como string vazia (\"\") em vez de adivinhar.\n" +
+      "4. Para dores, desejos, objeções e mapa da empatia, baseie-se no público-alvo e subnicho identificados na pesquisa externa; se não houver pesquisa, infira de forma CONSERVADORA e GENÉRICA, sem citar dados específicos.\n" +
+      "5. Diferencie claramente o que é FATO (extraído da página/pesquisa) do que é INFERÊNCIA conservadora — em caso de dúvida, prefira deixar vazio.\n" +
+      "6. Use português do Brasil. Para listas (módulos, bônus), separe itens por quebra de linha.\n" +
+      "7. Devolva SEMPRE chamando a tool fill_briefing.";
 
     const userPrompt =
       `URL analisada: ${url}\n\n` +
       `=== CONTEÚDO DA PÁGINA (markdown/texto) ===\n${pageContent}\n\n` +
       (research
-        ? `=== PESQUISA EXTERNA (Perplexity) ===\n${research}\n\n`
+        ? `=== PESQUISA EXTERNA SOBRE PÚBLICO-ALVO E NICHO (Perplexity) ===\n${research}\n\n` +
+          (citations.length
+            ? `Fontes citadas: ${citations.slice(0, 10).join(", ")}\n\n`
+            : "")
         : "") +
-      `=== INSTRUÇÕES ===\nPreencha o máximo possível dos campos do briefing usando a tool 'fill_briefing'. Inclua o Mapa da Empatia (me_*) com base no avatar inferido.`;
+      `=== INSTRUÇÕES ===\n` +
+      `Preencha os campos do briefing usando a tool 'fill_briefing'. Inclua o Mapa da Empatia (me_*) baseado no avatar identificado na pesquisa. ` +
+      `Lembre-se: deixe vazio (\"\") qualquer campo cuja informação não esteja claramente suportada pelas fontes — não invente.`;
 
     const filled = await callLLMWithTool({
       engine, apiKey: engineKey, model: engineModel, systemPrompt, userPrompt,
@@ -363,6 +397,7 @@ Deno.serve(async (req) => {
         data: filled,
         usedFirecrawl: !!byProvider.firecrawl?.api_key,
         usedPerplexity: !!byProvider.perplexity?.api_key && !!research,
+        citations,
         engine,
         model: engineModel,
       }),
