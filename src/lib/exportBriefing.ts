@@ -860,7 +860,7 @@ export function exportBriefingPdf(
     setText(PALETTE.muted);
     doc.setFont("helvetica", "normal");
     doc.setFontSize(8);
-    const left = data.nomeProduto || "Briefing";
+    const left = stripEmojis(data.nomeProduto || "Briefing");
     doc.text(left, margin, pageH - 18);
     const right = `${p - 1} / ${pageCount - 1}`;
     doc.text(right, pageW - margin, pageH - 18, { align: "right" });
