@@ -20,13 +20,29 @@ import { useAuth } from "@/contexts/AuthContext";
 type Engine = "lovable" | "openai" | "gemini";
 type ForceMethod = "fetch" | "firecrawl" | "perplexity";
 
+interface PreviewPayload {
+  length: number;
+  chars: number;
+  words: number;
+  score: number;
+  level: "alta" | "média" | "baixa" | "insuficiente";
+  head: string;
+  middle: string;
+  tail: string;
+}
+
+interface MethodFlag { available: boolean; disabled: boolean; reason?: string }
+
 interface ChoicePayload {
   errorCode: "SITE_BLOCKED" | "WEAK_CONTENT" | "EMPTY_CONTENT" | "INVALID_URL";
   message: string;
-  preview: string;
+  preview: PreviewPayload;
   hasPerplexity: boolean;
   hasFirecrawl: boolean;
   scrapeStatus?: number;
+  scrapeMethod?: string;
+  recommended?: "fetch" | "firecrawl" | "perplexity" | null;
+  methods?: { fetch: MethodFlag; firecrawl: MethodFlag; perplexity: MethodFlag };
 }
 
 interface Props {
