@@ -33,9 +33,10 @@ const ICP_FIELDS: Record<string, string> = {
   me_ganhos: "GANHOS / NECESSIDADES — critérios de sucesso. O que é sucesso para ele? Onde quer chegar? O que acabaria com seus problemas? Inclua tangíveis (dinheiro, tempo, métricas) e intangíveis (orgulho, reconhecimento). Mínimo 4 itens.",
 };
 
-function buildToolSchema() {
+function buildToolSchema(fieldKeys?: string[]) {
   const properties: Record<string, unknown> = {};
-  for (const id of Object.keys(ICP_FIELDS)) {
+  const keys = fieldKeys && fieldKeys.length ? fieldKeys : Object.keys(ICP_FIELDS);
+  for (const id of keys) {
     properties[id] = { type: "string", description: ICP_FIELDS[id] };
   }
   return {
@@ -46,12 +47,14 @@ function buildToolSchema() {
       parameters: {
         type: "object",
         properties,
-        required: ["descricaoAvatar"],
+        required: keys.slice(0, 1),
         additionalProperties: false,
       },
     },
   };
 }
+
+const EMPATHY_KEYS = ["me_ve","me_ouve","me_pensaSente","me_falaFaz","me_dores","me_ganhos"];
 
 interface BriefingSnapshot {
   nomeProduto?: string;
