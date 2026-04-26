@@ -456,18 +456,41 @@ const BriefingEditor = () => {
                 </div>
               )}
 
-              {/* Status do Mapa da Empatia */}
-              {section.id === "mapaEmpatia" && !empathyValidation.ok && (
-                <div className="flex items-start gap-2 rounded-lg border border-destructive/40 bg-destructive/10 p-3 text-sm">
-                  <AlertTriangle className="mt-0.5 h-4 w-4 shrink-0 text-destructive" />
-                  <div>
-                    <p className="font-medium">
-                      Mapa da Empatia incompleto — {empathyValidation.errors.length} quadrante(s) abaixo do mínimo.
-                    </p>
-                    <p className="text-xs text-muted-foreground">
-                      Cada quadrante exige itens concretos (separe por vírgula ou nova linha). Mínimo: VÊ/OUVE/PENSA-SENTE/FALA-FAZ ≥ 3, DORES/GANHOS ≥ 4.
-                    </p>
+              {/* Status + ação de refazer Mapa da Empatia */}
+              {section.id === "mapaEmpatia" && (
+                <div className={`flex flex-col gap-3 rounded-lg border p-3 text-sm sm:flex-row sm:items-start sm:justify-between ${
+                  empathyValidation.ok
+                    ? "border-success/40 bg-success/10"
+                    : "border-destructive/40 bg-destructive/10"
+                }`}>
+                  <div className="flex items-start gap-2">
+                    {empathyValidation.ok ? (
+                      <Sparkles className="mt-0.5 h-4 w-4 shrink-0 text-success" />
+                    ) : (
+                      <AlertTriangle className="mt-0.5 h-4 w-4 shrink-0 text-destructive" />
+                    )}
+                    <div>
+                      <p className="font-medium">
+                        {empathyValidation.ok
+                          ? "Mapa da Empatia completo."
+                          : `Mapa da Empatia incompleto — ${empathyValidation.errors.length} quadrante(s) abaixo do mínimo.`}
+                      </p>
+                      <p className="text-xs text-muted-foreground">
+                        Use a IA para refazer todos os 6 quadrantes com base no produto e no avatar atual.
+                      </p>
+                    </div>
                   </div>
+                  <Button
+                    size="sm"
+                    onClick={handleRefillEmpathy}
+                    disabled={refillingEmpathy}
+                    className="shrink-0"
+                  >
+                    {refillingEmpathy
+                      ? <Loader2 className="mr-2 h-4 w-4 animate-spin" />
+                      : <Wand2 className="mr-2 h-4 w-4" />}
+                    Refazer com IA
+                  </Button>
                 </div>
               )}
             </CardHeader>
