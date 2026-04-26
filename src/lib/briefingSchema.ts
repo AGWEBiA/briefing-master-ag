@@ -142,15 +142,29 @@ export const FIXED_SECTIONS: Section[] = [
     id: "posicionamento",
     title: "Posicionamento e Autoridade",
     icon: Trophy,
-    groups: [{
-      fields: [
+    groups: [
+      { label: "O Expert", fields: [
         { id: "nomeExpert", label: "Nome do Expert / Produtor", type: "text", required: true },
         { id: "audienciaAtual", label: "Audiência Atual", type: "text", placeholder: "Ex: 50k Instagram, 5k lista de e-mail" },
         { id: "historiaTransformacao", label: "História de Transformação do Expert", type: "textarea", rows: 4, hint: "Qual foi a jornada do expert? De onde veio, o que superou, onde chegou?" },
+        { id: "formacaoExpert", label: "Formação Acadêmica", type: "text", placeholder: "Ex: Administração - USP, MBA Marketing FGV..." },
+        { id: "certificacoesExpert", label: "Certificações Relevantes", type: "textarea", rows: 2, hint: "Cursos, selos, credenciais reconhecidas no nicho." },
+        { id: "mecanismoUnicoExpert", label: "Mecanismo Único do Expert", type: "textarea", rows: 3, hint: "Método/framework próprio que sustenta a autoridade dele. Ex.: 'Método VTR de 4 etapas'." },
+      ]},
+      { label: "Validação de Autoridade", fields: [
+        { id: "expertCasesReais", label: "Possui cases reais documentados?", type: "radio", options: ["Sim", "Não", "Em construção"] },
+        { id: "expertDepoimentos", label: "Possui depoimentos?", type: "radio", options: ["Sim", "Não", "Em construção"] },
+        { id: "expertJaEnsinou", label: "Já ensinou esse público antes?", type: "radio", options: ["Sim", "Não"] },
+        { id: "expertAutoridadeNicho", label: "Possui autoridade reconhecida no nicho?", type: "radio", options: ["Sim", "Parcial", "Não"] },
+      ]},
+      { label: "Posicionamento da Oferta", fields: [
         { id: "provasSociais", label: "Provas Sociais Disponíveis", type: "textarea", rows: 3, hint: "Depoimentos, cases, números, prêmios, menções na mídia..." },
         { id: "diferenciais", label: "Diferenciais frente à Concorrência", type: "textarea", rows: 3, hint: "O que torna este produto único?" },
-      ],
-    }],
+        { id: "bigIdea", label: "Big Idea", type: "textarea", rows: 3, hint: "Conceito central, contraintuitivo, que organiza toda a comunicação. Ex.: 'Não é tráfego, é matemática.'" },
+        { id: "tomDeVoz", label: "Tom de Voz", type: "textarea", rows: 3, placeholder: "Ex.: direto, provocador, baseado em dados; sem 'gurueiragem'", hint: "Liste 3 a 5 atributos do tom (ex.: educativo, irreverente, técnico)." },
+        { id: "naoComunicar", label: "O que NÃO Comunicar (Anti-posicionamento)", type: "textarea", rows: 3, hint: "Promessas, palavras, comparações ou estilos que devem ser evitados na comunicação." },
+      ]},
+    ],
   },
   {
     id: "estrutura",
