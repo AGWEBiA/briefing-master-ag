@@ -613,7 +613,7 @@ Deno.serve(async (req) => {
       engine?: "lovable" | "openai" | "gemini";
       // "auto" = comportamento padrão; "inspect" = só raspar e devolver prévia/qualidade;
       // "run" = forçar execução com forceMethod; "feedback" = grava avaliação do usuário
-      mode?: "auto" | "inspect" | "run" | "feedback";
+      mode?: "auto" | "inspect" | "run" | "feedback" | "ping";
       forceMethod?: "fetch" | "firecrawl" | "perplexity";
       // Métodos já tentados pelo usuário no mesmo URL — evita repetir na cascata automática
       triedMethods?: Array<"fetch" | "firecrawl" | "perplexity" | "perplexity-fallback">;
