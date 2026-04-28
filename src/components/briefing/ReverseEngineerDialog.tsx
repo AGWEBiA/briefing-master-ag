@@ -84,13 +84,28 @@ export const ReverseEngineerDialog = ({ onApply, trigger }: Props) => {
     if (!open || !user) return;
     setChoice(null); setTried([]); setFeedbackSent(null);
     (async () => {
-      const { data } = await supabase
-        .from("ai_integrations")
-        .select("provider, enabled")
-        .eq("enabled", true);
-      const set = { openai: false, gemini: false, perplexity: false, firecrawl: false };
-      (data ?? []).forEach((r) => { (set as Record<string, boolean>)[r.provider] = true; });
-      setAvailable(set);
+      // Pergunta à edge function quais providers estão *de fato* disponíveis
+      // (mescla ai_integrations + secrets dos connectors do Lovable Cloud)
+      const { data, error } = await supabase.functions.invoke("reverse-engineer", {
+        body: { url: "https://ping.local", mode: "ping" },
+      });
+      if (error || !data) {
+        // Fallback: lê só do banco
+        const { data: db } = await supabase
+          .from("ai_integrations")
+          .select("provider, enabled")
+          .eq("enabled", true);
+        const set = { openai: false, gemini: false, perplexity: false, firecrawl: false };
+        (db ?? []).forEach((r) => { (set as Record<string, boolean>)[r.provider] = true; });
+        setAvailable(set);
+        return;
+      }
+      setAvailable({
+        openai: !!data.openai,
+        gemini: !!data.gemini,
+        perplexity: !!data.perplexity,
+        firecrawl: !!data.firecrawl,
+      });
     })();
   }, [open, user]);
 

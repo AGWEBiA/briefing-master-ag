@@ -613,7 +613,7 @@ Deno.serve(async (req) => {
       engine?: "lovable" | "openai" | "gemini";
       // "auto" = comportamento padrão; "inspect" = só raspar e devolver prévia/qualidade;
       // "run" = forçar execução com forceMethod; "feedback" = grava avaliação do usuário
-      mode?: "auto" | "inspect" | "run" | "feedback";
+      mode?: "auto" | "inspect" | "run" | "feedback" | "ping";
       forceMethod?: "fetch" | "firecrawl" | "perplexity";
       // Métodos já tentados pelo usuário no mesmo URL — evita repetir na cascata automática
       triedMethods?: Array<"fetch" | "firecrawl" | "perplexity" | "perplexity-fallback">;
@@ -675,7 +675,32 @@ Deno.serve(async (req) => {
       );
     }
 
-    // Carrega integrações do usuário
+    // === Modo "ping": devolve quais providers estão de fato disponíveis (DB ∪ env) ===
+    if (mode === "ping") {
+      const { data: integ } = await supabase
+        .from("ai_integrations")
+        .select("provider, api_key")
+        .eq("user_id", userId)
+        .eq("enabled", true);
+      const has = (p: string) => (integ ?? []).some((i) => i.provider === p && !!i.api_key);
+      const envFc = !!Deno.env.get("FIRECRAWL_API_KEY");
+      const envPx = !!Deno.env.get("PERPLEXITY_API_KEY");
+      return new Response(
+        JSON.stringify({
+          firecrawl: has("firecrawl") || envFc,
+          perplexity: has("perplexity") || envPx,
+          openai: has("openai"),
+          gemini: has("gemini"),
+          sources: {
+            firecrawl: has("firecrawl") ? "db" : envFc ? "env" : "none",
+            perplexity: has("perplexity") ? "db" : envPx ? "env" : "none",
+          },
+        }),
+        { status: 200, headers: { ...corsHeaders, "Content-Type": "application/json" } },
+      );
+    }
+
+    // Carrega integrações do usuário (cadastradas manualmente em /integrations)
     const { data: integrations } = await supabase
       .from("ai_integrations")
       .select("provider, api_key, default_model, enabled")
@@ -685,6 +710,25 @@ Deno.serve(async (req) => {
     const byProvider = Object.fromEntries(
       (integrations ?? []).map((i) => [i.provider, i]),
     ) as Record<string, { api_key: string; default_model: string | null }>;
+
+    // Fallback: connectors do Lovable Cloud injetam as chaves como env vars.
+    // Se a tabela ai_integrations não tiver, usa o secret do ambiente.
+    // Isto garante que o que a UI vê (`hasFirecrawl`/`hasPerplexity`) corresponde
+    // ao que a função consegue de fato chamar.
+    const envFirecrawl = Deno.env.get("FIRECRAWL_API_KEY");
+    const envPerplexity = Deno.env.get("PERPLEXITY_API_KEY");
+    if (!byProvider.firecrawl?.api_key && envFirecrawl) {
+      byProvider.firecrawl = { api_key: envFirecrawl, default_model: null };
+    }
+    if (!byProvider.perplexity?.api_key && envPerplexity) {
+      byProvider.perplexity = { api_key: envPerplexity, default_model: null };
+    }
+    console.log("integrations resolved:", {
+      firecrawl: !!byProvider.firecrawl?.api_key,
+      perplexity: !!byProvider.perplexity?.api_key,
+      firecrawlSource: byProvider.firecrawl?.api_key === envFirecrawl ? "env" : byProvider.firecrawl?.api_key ? "db" : "none",
+      perplexitySource: byProvider.perplexity?.api_key === envPerplexity ? "env" : byProvider.perplexity?.api_key ? "db" : "none",
+    });
 
     // Ajuste de limiar baseado no histórico de feedback
     const thresholdAdj = await computeThresholdAdjustment(supabase, userId, host);
