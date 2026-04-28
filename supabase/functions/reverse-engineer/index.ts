@@ -675,6 +675,31 @@ Deno.serve(async (req) => {
       );
     }
 
+    // === Modo "ping": devolve quais providers estão de fato disponíveis (DB ∪ env) ===
+    if (mode === "ping") {
+      const { data: integ } = await supabase
+        .from("ai_integrations")
+        .select("provider, api_key")
+        .eq("user_id", userId)
+        .eq("enabled", true);
+      const has = (p: string) => (integ ?? []).some((i) => i.provider === p && !!i.api_key);
+      const envFc = !!Deno.env.get("FIRECRAWL_API_KEY");
+      const envPx = !!Deno.env.get("PERPLEXITY_API_KEY");
+      return new Response(
+        JSON.stringify({
+          firecrawl: has("firecrawl") || envFc,
+          perplexity: has("perplexity") || envPx,
+          openai: has("openai"),
+          gemini: has("gemini"),
+          sources: {
+            firecrawl: has("firecrawl") ? "db" : envFc ? "env" : "none",
+            perplexity: has("perplexity") ? "db" : envPx ? "env" : "none",
+          },
+        }),
+        { status: 200, headers: { ...corsHeaders, "Content-Type": "application/json" } },
+      );
+    }
+
     // Carrega integrações do usuário (cadastradas manualmente em /integrations)
     const { data: integrations } = await supabase
       .from("ai_integrations")
