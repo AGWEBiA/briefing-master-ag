@@ -23,6 +23,14 @@ type Engine = "lovable" | "openai" | "gemini";
 type ForceMethod = "fetch" | "firecrawl" | "perplexity";
 type PageType = "spa" | "amp" | "ssr" | "static" | "blocked" | "unknown";
 
+const PROVIDER_LABELS = {
+  lovable: { label: "Lovable AI", icon: "✨" },
+  openai: { label: "OpenAI", icon: "🤖" },
+  gemini: { label: "Google Gemini", icon: "✨" },
+  firecrawl: { label: "Firecrawl", icon: "🔥" },
+  perplexity: { label: "Perplexity", icon: "🔎" },
+} as const;
+
 interface PreviewPayload {
   length: number;
   chars: number;
@@ -76,6 +84,7 @@ export const ReverseEngineerDialog = ({ onApply, trigger }: Props) => {
   const [choice, setChoice] = useState<ChoicePayload | null>(null);
   const [tried, setTried] = useState<ForceMethod[]>([]);
   const [feedbackSent, setFeedbackSent] = useState<"good" | "bad" | null>(null);
+  const [checkingAvailability, setCheckingAvailability] = useState(false);
   const [available, setAvailable] = useState<{ openai: boolean; gemini: boolean; perplexity: boolean; firecrawl: boolean }>({
     openai: false, gemini: false, perplexity: false, firecrawl: false,
   });
@@ -84,6 +93,7 @@ export const ReverseEngineerDialog = ({ onApply, trigger }: Props) => {
     if (!open || !user) return;
     setChoice(null); setTried([]); setFeedbackSent(null);
     (async () => {
+      setCheckingAvailability(true);
       // Pergunta à edge function quais providers estão *de fato* disponíveis
       // (mescla ai_integrations + secrets dos connectors do Lovable Cloud)
       const { data, error } = await supabase.functions.invoke("reverse-engineer", {
@@ -98,6 +108,7 @@ export const ReverseEngineerDialog = ({ onApply, trigger }: Props) => {
         const set = { openai: false, gemini: false, perplexity: false, firecrawl: false };
         (db ?? []).forEach((r) => { (set as Record<string, boolean>)[r.provider] = true; });
         setAvailable(set);
+        setCheckingAvailability(false);
         return;
       }
       setAvailable({
@@ -106,8 +117,17 @@ export const ReverseEngineerDialog = ({ onApply, trigger }: Props) => {
         perplexity: !!data.perplexity,
         firecrawl: !!data.firecrawl,
       });
+      setCheckingAvailability(false);
     })();
   }, [open, user]);
+
+  const providerStatus = [
+    { id: "lovable" as const, active: true },
+    { id: "firecrawl" as const, active: available.firecrawl },
+    { id: "perplexity" as const, active: available.perplexity },
+    { id: "openai" as const, active: available.openai },
+    { id: "gemini" as const, active: available.gemini },
+  ];
 
   const run = async (forceMethod?: ForceMethod, opts?: { keepTried?: boolean }) => {
     if (!/^https?:\/\//i.test(url)) {
@@ -249,9 +269,28 @@ export const ReverseEngineerDialog = ({ onApply, trigger }: Props) => {
             </Select>
           </div>
 
+          <div className="rounded-md border bg-muted/30 p-3">
+            <div className="mb-2 flex items-center justify-between gap-2">
+              <p className="text-xs font-medium text-foreground">Motores configurados</p>
+              {checkingAvailability && <Loader2 className="h-3.5 w-3.5 animate-spin text-muted-foreground" />}
+            </div>
+            <div className="flex flex-wrap gap-1.5">
+              {providerStatus.map(({ id, active }) => {
+                const meta = PROVIDER_LABELS[id];
+                return (
+                  <Badge key={id} variant={active ? "default" : "outline"} className="gap-1 text-[11px]">
+                    <span>{meta.icon}</span>
+                    <span>{meta.label}</span>
+                    <span className="opacity-75">{active ? "ativo" : "inativo"}</span>
+                  </Badge>
+                );
+              })}
+            </div>
+          </div>
+
           <Alert>
             <AlertDescription className="text-xs">
-              <span className="font-medium">Extração de conteúdo:</span> usamos leitura direta da página por padrão.{" "}
+              <span className="font-medium">Extração de conteúdo:</span> Firecrawl e Perplexity são fontes de scraping/pesquisa; OpenAI/Gemini são motores opcionais de estruturação. Usamos leitura direta da página por padrão.{" "}
               {available.firecrawl && "🔥 Firecrawl ativo. "}
               {available.perplexity && "🔎 Perplexity ativo. "}
               {!available.firecrawl && !available.perplexity && (isAdmin ? "Conecte Firecrawl ou Perplexity para resultados melhores em sites que bloqueiam scraping." : "Para resultados melhores em sites que bloqueiam scraping, peça ao administrador para conectar Firecrawl ou Perplexity.")}{" "}
