@@ -269,9 +269,28 @@ export const ReverseEngineerDialog = ({ onApply, trigger }: Props) => {
             </Select>
           </div>
 
+          <div className="rounded-md border bg-muted/30 p-3">
+            <div className="mb-2 flex items-center justify-between gap-2">
+              <p className="text-xs font-medium text-foreground">Motores configurados</p>
+              {checkingAvailability && <Loader2 className="h-3.5 w-3.5 animate-spin text-muted-foreground" />}
+            </div>
+            <div className="flex flex-wrap gap-1.5">
+              {providerStatus.map(({ id, active }) => {
+                const meta = PROVIDER_LABELS[id];
+                return (
+                  <Badge key={id} variant={active ? "default" : "outline"} className="gap-1 text-[11px]">
+                    <span>{meta.icon}</span>
+                    <span>{meta.label}</span>
+                    <span className="opacity-75">{active ? "ativo" : "inativo"}</span>
+                  </Badge>
+                );
+              })}
+            </div>
+          </div>
+
           <Alert>
             <AlertDescription className="text-xs">
-              <span className="font-medium">Extração de conteúdo:</span> usamos leitura direta da página por padrão.{" "}
+              <span className="font-medium">Extração de conteúdo:</span> Firecrawl e Perplexity são fontes de scraping/pesquisa; OpenAI/Gemini são motores opcionais de estruturação. Usamos leitura direta da página por padrão.{" "}
               {available.firecrawl && "🔥 Firecrawl ativo. "}
               {available.perplexity && "🔎 Perplexity ativo. "}
               {!available.firecrawl && !available.perplexity && (isAdmin ? "Conecte Firecrawl ou Perplexity para resultados melhores em sites que bloqueiam scraping." : "Para resultados melhores em sites que bloqueiam scraping, peça ao administrador para conectar Firecrawl ou Perplexity.")}{" "}
