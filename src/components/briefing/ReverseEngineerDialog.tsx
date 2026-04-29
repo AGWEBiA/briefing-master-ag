@@ -273,6 +273,23 @@ export const ReverseEngineerDialog = ({ onApply, trigger }: Props) => {
             </Select>
           </div>
 
+          <div className="space-y-1.5">
+            <Label>Fonte de extração</Label>
+            <Select value={source} onValueChange={(v) => setSource(v as "auto" | ForceMethod)}>
+              <SelectTrigger><SelectValue /></SelectTrigger>
+              <SelectContent>
+                <SelectItem value="auto">🤖 Automático (recomendado) — escolhe a melhor fonte</SelectItem>
+                <SelectItem value="fetch">⚡ Leitura direta — rápido, falha em SPAs</SelectItem>
+                <SelectItem value="firecrawl" disabled={!available.firecrawl}>
+                  🔥 Firecrawl {!available.firecrawl && (isAdmin ? "(conecte em Integrações)" : "(indisponível)")}
+                </SelectItem>
+                <SelectItem value="perplexity" disabled={!available.perplexity}>
+                  🔎 Perplexity {!available.perplexity && (isAdmin ? "(conecte em Integrações)" : "(indisponível)")}
+                </SelectItem>
+              </SelectContent>
+            </Select>
+          </div>
+
           <div className="rounded-md border bg-muted/30 p-3">
             <div className="mb-2 flex items-center justify-between gap-2">
               <p className="text-xs font-medium text-foreground">Motores configurados</p>
