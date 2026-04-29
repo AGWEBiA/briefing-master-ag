@@ -142,8 +142,11 @@ export const ReverseEngineerDialog = ({ onApply, trigger }: Props) => {
     if (!opts?.keepTried) setFeedbackSent(null);
 
     const triedMethods = forceMethod ? Array.from(new Set([...tried, forceMethod])) : tried;
+    const effectiveForce: ForceMethod | undefined = forceMethod ?? (source !== "auto" ? source : undefined);
+    if (effectiveForce === "firecrawl" && !available.firecrawl) { toast.error("Firecrawl não está conectado."); setRunning(false); return; }
+    if (effectiveForce === "perplexity" && !available.perplexity) { toast.error("Perplexity não está conectado."); setRunning(false); return; }
     const { data, error } = await supabase.functions.invoke("reverse-engineer", {
-      body: { url, engine, mode: forceMethod ? "run" : "auto", forceMethod, triedMethods },
+      body: { url, engine, mode: effectiveForce ? "run" : "auto", forceMethod: effectiveForce, triedMethods },
     });
     setRunning(false);
 
