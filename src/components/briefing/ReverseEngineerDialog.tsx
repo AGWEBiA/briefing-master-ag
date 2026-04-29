@@ -80,6 +80,7 @@ export const ReverseEngineerDialog = ({ onApply, trigger }: Props) => {
   const [open, setOpen] = useState(false);
   const [url, setUrl] = useState("");
   const [engine, setEngine] = useState<Engine>("lovable");
+  const [source, setSource] = useState<"auto" | ForceMethod>("auto");
   const [running, setRunning] = useState(false);
   const [choice, setChoice] = useState<ChoicePayload | null>(null);
   const [tried, setTried] = useState<ForceMethod[]>([]);
@@ -141,8 +142,11 @@ export const ReverseEngineerDialog = ({ onApply, trigger }: Props) => {
     if (!opts?.keepTried) setFeedbackSent(null);
 
     const triedMethods = forceMethod ? Array.from(new Set([...tried, forceMethod])) : tried;
+    const effectiveForce: ForceMethod | undefined = forceMethod ?? (source !== "auto" ? source : undefined);
+    if (effectiveForce === "firecrawl" && !available.firecrawl) { toast.error("Firecrawl não está conectado."); setRunning(false); return; }
+    if (effectiveForce === "perplexity" && !available.perplexity) { toast.error("Perplexity não está conectado."); setRunning(false); return; }
     const { data, error } = await supabase.functions.invoke("reverse-engineer", {
-      body: { url, engine, mode: forceMethod ? "run" : "auto", forceMethod, triedMethods },
+      body: { url, engine, mode: effectiveForce ? "run" : "auto", forceMethod: effectiveForce, triedMethods },
     });
     setRunning(false);
 
@@ -264,6 +268,23 @@ export const ReverseEngineerDialog = ({ onApply, trigger }: Props) => {
                 </SelectItem>
                 <SelectItem value="gemini" disabled={!available.gemini}>
                   ✨ Google Gemini {!available.gemini && (isAdmin ? "(conecte em Integrações)" : "(indisponível)")}
+                </SelectItem>
+              </SelectContent>
+            </Select>
+          </div>
+
+          <div className="space-y-1.5">
+            <Label>Fonte de extração</Label>
+            <Select value={source} onValueChange={(v) => setSource(v as "auto" | ForceMethod)}>
+              <SelectTrigger><SelectValue /></SelectTrigger>
+              <SelectContent>
+                <SelectItem value="auto">🤖 Automático (recomendado) — escolhe a melhor fonte</SelectItem>
+                <SelectItem value="fetch">⚡ Leitura direta — rápido, falha em SPAs</SelectItem>
+                <SelectItem value="firecrawl" disabled={!available.firecrawl}>
+                  🔥 Firecrawl {!available.firecrawl && (isAdmin ? "(conecte em Integrações)" : "(indisponível)")}
+                </SelectItem>
+                <SelectItem value="perplexity" disabled={!available.perplexity}>
+                  🔎 Perplexity {!available.perplexity && (isAdmin ? "(conecte em Integrações)" : "(indisponível)")}
                 </SelectItem>
               </SelectContent>
             </Select>
