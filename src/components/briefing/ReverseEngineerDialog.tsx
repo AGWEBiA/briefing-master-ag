@@ -80,6 +80,7 @@ export const ReverseEngineerDialog = ({ onApply, trigger }: Props) => {
   const [open, setOpen] = useState(false);
   const [url, setUrl] = useState("");
   const [engine, setEngine] = useState<Engine>("lovable");
+  const [source, setSource] = useState<"auto" | ForceMethod>("auto");
   const [running, setRunning] = useState(false);
   const [choice, setChoice] = useState<ChoicePayload | null>(null);
   const [tried, setTried] = useState<ForceMethod[]>([]);
